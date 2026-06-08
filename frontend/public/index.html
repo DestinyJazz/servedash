@@ -1,0 +1,750 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Servedash</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<style>
+:root {
+  --bg:        #0d0f14;
+  --surface:   #13161d;
+  --surface2:  #1a1e27;
+  --surface3:  #20242f;
+  --border:    #252930;
+  --border2:   #2e3340;
+  --text:      #e8eaf2;
+  --text2:     #8890a8;
+  --text3:     #454d63;
+  --accent:    #3b82f6;
+  --accent-h:  #2563eb;
+  --green:     #22c55e;
+  --green-bg:  rgba(34,197,94,.1);
+  --red:       #ef4444;
+  --red-bg:    rgba(239,68,68,.1);
+  --yellow:    #f59e0b;
+  --yellow-bg: rgba(245,158,11,.1);
+  --orange:    #f97316;
+  --r:         10px;
+  --sans:      'Inter', sans-serif;
+  --mono:      'JetBrains Mono', monospace;
+  --shadow:    0 2px 8px rgba(0,0,0,.4), 0 12px 32px rgba(0,0,0,.3);
+}
+[data-theme="light"] {
+  --bg:        #f4f6fb;
+  --surface:   #ffffff;
+  --surface2:  #f0f2f8;
+  --surface3:  #e8eaf4;
+  --border:    #e0e4f0;
+  --border2:   #d0d4e8;
+  --text:      #111827;
+  --text2:     #6b7280;
+  --text3:     #9ca3af;
+  --shadow:    0 2px 8px rgba(0,0,0,.07), 0 12px 32px rgba(0,0,0,.05);
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{font-size:14px;-webkit-font-smoothing:antialiased}
+body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:100vh;transition:background .2s,color .2s}
+button{cursor:pointer;border:none;background:none;font-family:inherit;color:inherit}
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+
+/* TOPBAR */
+.topbar{
+  height:56px;display:flex;align-items:center;gap:10px;
+  padding:0 24px;background:var(--surface);
+  border-bottom:1px solid var(--border);
+  position:sticky;top:0;z-index:100;
+}
+.logo{display:flex;align-items:center;gap:8px;font-size:.95rem;font-weight:700;letter-spacing:-.3px;margin-right:4px}
+.logo-mark{width:28px;height:28px;border-radius:7px;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:.85rem}
+.gap{flex:1}
+.host-chip{
+  display:flex;align-items:center;gap:6px;padding:4px 10px;border-radius:6px;
+  background:var(--surface2);border:1px solid var(--border);
+  font-size:.7rem;font-family:var(--mono);color:var(--text2);
+}
+.live-dot{width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 0 2px var(--green-bg);animation:blink 2.5s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+.icon-btn{
+  width:32px;height:32px;border-radius:7px;border:1px solid var(--border);
+  background:var(--surface2);display:flex;align-items:center;justify-content:center;
+  font-size:.85rem;transition:background .15s;
+}
+.icon-btn:hover{background:var(--surface3)}
+.icon-btn.active{background:var(--accent);border-color:var(--accent);color:#fff}
+.refresh-btn{
+  display:flex;align-items:center;gap:6px;padding:6px 14px;border-radius:7px;
+  background:var(--accent);color:#fff;font-size:.76rem;font-weight:600;
+  transition:background .15s,transform .1s;
+}
+.refresh-btn:hover{background:var(--accent-h)}
+.refresh-btn:active{transform:scale(.97)}
+.refresh-btn.spinning svg{animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* STATS */
+.stats-row{display:flex;gap:10px;padding:18px 24px 0}
+.stat-card{
+  flex:1;display:flex;align-items:center;gap:12px;padding:14px 16px;
+  border-radius:var(--r);background:var(--surface);border:1px solid var(--border);
+}
+.stat-icon{width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:.95rem;flex-shrink:0}
+.si-blue {background:rgba(59,130,246,.12);color:var(--accent)}
+.si-green{background:var(--green-bg);color:var(--green)}
+.si-red  {background:var(--red-bg);color:var(--red)}
+.si-gray {background:var(--surface3);color:var(--text2)}
+.stat-label{font-size:.65rem;font-weight:500;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px}
+.stat-val{font-size:1.4rem;font-weight:700;line-height:1}
+.sv-blue {color:var(--accent)}
+.sv-green{color:var(--green)}
+.sv-red  {color:var(--red)}
+
+/* TOOLBAR */
+.toolbar{display:flex;align-items:center;gap:8px;padding:16px 24px 0}
+.search-box{position:relative;flex:1;max-width:280px}
+.search-box svg{position:absolute;left:9px;top:50%;transform:translateY(-50%);color:var(--text3);pointer-events:none}
+.search-input{
+  width:100%;padding:7px 9px 7px 30px;background:var(--surface);border:1px solid var(--border);
+  border-radius:7px;color:var(--text);font-family:var(--mono);font-size:.76rem;outline:none;
+  transition:border-color .15s,box-shadow .15s;
+}
+.search-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(59,130,246,.1)}
+.filters{display:flex;gap:3px}
+.f-btn{
+  padding:6px 12px;border-radius:6px;border:1px solid var(--border);
+  background:var(--surface);font-size:.73rem;font-weight:500;color:var(--text2);transition:all .15s;
+}
+.f-btn:hover{border-color:var(--border2);color:var(--text)}
+.f-btn.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.f-count{font-size:.63rem;font-family:var(--mono);margin-left:3px;opacity:.75}
+.view-btns{display:flex;gap:3px;margin-left:4px}
+
+/* GRID VIEW */
+.content{padding:14px 24px 28px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px}
+
+/* CARD */
+.card{
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--r);
+  overflow:hidden;transition:border-color .2s,box-shadow .2s;
+  animation:up .22s ease both;
+}
+@keyframes up{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+.card:hover{border-color:var(--border2);box-shadow:var(--shadow)}
+.card.running{border-top:2px solid var(--green)}
+.card.exited {border-top:2px solid var(--red)}
+.card.paused {border-top:2px solid var(--yellow)}
+
+.ch{display:flex;align-items:center;gap:11px;padding:14px 14px 11px}
+.avatar{
+  width:38px;height:38px;border-radius:8px;flex-shrink:0;
+  background:var(--surface2);border:1px solid var(--border);
+  display:flex;align-items:center;justify-content:center;
+  font-family:var(--mono);font-size:.75rem;font-weight:600;color:var(--accent);
+}
+.cmeta{flex:1;min-width:0}
+.cname{font-size:.88rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cimage{font-size:.66rem;color:var(--text2);font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+.sbadge{
+  display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:5px;
+  font-size:.66rem;font-weight:600;font-family:var(--mono);flex-shrink:0;
+}
+.sbadge.running{background:var(--green-bg);color:var(--green)}
+.sbadge.exited {background:var(--red-bg);color:var(--red)}
+.sbadge.paused {background:var(--yellow-bg);color:var(--yellow)}
+.sbadge.created{background:rgba(59,130,246,.1);color:var(--accent)}
+.sdot{width:5px;height:5px;border-radius:50%;background:currentColor}
+.sbadge.running .sdot{animation:blink 2s infinite}
+
+.cstats{display:flex;gap:1px;margin:0 14px 11px;background:var(--border);border-radius:7px;overflow:hidden}
+.cs{flex:1;background:var(--surface2);padding:7px 10px}
+.cs-label{font-size:.6rem;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px}
+.cs-val{font-size:.82rem;font-weight:600;font-family:var(--mono)}
+.cs-bar{height:3px;background:var(--border2);border-radius:2px;margin-top:4px;overflow:hidden}
+.cs-fill{height:100%;border-radius:2px;transition:width .6s ease}
+.cs-fill.cpu{background:var(--accent)}
+.cs-fill.mem{background:var(--orange)}
+.cs-fill.hot{background:var(--red)}
+
+.cports{display:flex;flex-wrap:wrap;gap:4px;padding:0 14px 11px}
+.ptag{font-size:.65rem;font-family:var(--mono);background:var(--surface2);border:1px solid var(--border);padding:2px 6px;border-radius:4px;color:var(--text2)}
+
+/* PORT DROPDOWN */
+.port-menu-wrap{position:relative;flex:1}
+.port-menu-wrap .ca{width:100%}
+.port-dropdown{
+  position:absolute;bottom:calc(100% + 4px);left:0;right:0;z-index:50;
+  background:var(--surface2);border:1px solid var(--border2);border-radius:8px;
+  overflow:hidden;box-shadow:var(--shadow);
+  display:none;flex-direction:column;
+}
+.port-menu-wrap.open .port-dropdown{display:flex}
+.port-option{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:8px 12px;font-size:.72rem;font-family:var(--mono);
+  color:var(--text2);cursor:pointer;transition:background .12s,color .12s;
+  border-bottom:1px solid var(--border);
+}
+.port-option:last-child{border-bottom:none}
+.port-option:hover{background:var(--surface3);color:var(--accent)}
+.port-option-port{font-weight:600;color:var(--text)}
+.port-option-proto{font-size:.65rem;color:var(--text3)}
+
+.cactions{display:flex;border-top:1px solid var(--border)}
+.ca{
+  flex:1;padding:9px 4px;display:flex;align-items:center;justify-content:center;gap:4px;
+  font-size:.7rem;font-weight:500;color:var(--text2);background:var(--surface);
+  transition:background .15s,color .15s;
+}
+.ca:hover{background:var(--surface2);color:var(--text)}
+.ca.open:hover   {color:var(--accent)}
+.ca.logs:hover   {color:var(--yellow)}
+.ca.start:hover  {color:var(--green)}
+.ca.stop:hover   {color:var(--red)}
+.ca.restart:hover{color:var(--orange)}
+.ca:disabled{opacity:.3;pointer-events:none}
+.ca+.ca{border-left:1px solid var(--border)}
+
+/* LIST VIEW */
+.list{display:flex;flex-direction:column;gap:1px;background:var(--border);border-radius:var(--r);overflow:hidden;border:1px solid var(--border)}
+.list-header{
+  display:grid;grid-template-columns:2fr 2.5fr 90px 110px 110px 160px;
+  gap:12px;padding:9px 16px;
+  background:var(--surface2);
+  font-size:.66rem;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;
+}
+.list-row{
+  display:grid;grid-template-columns:2fr 2.5fr 90px 110px 110px 160px;
+  gap:12px;padding:11px 16px;align-items:center;
+  background:var(--surface);transition:background .15s;
+  animation:up .2s ease both;
+}
+.list-row:hover{background:var(--surface2)}
+.list-row.running{border-left:2px solid var(--green)}
+.list-row.exited {border-left:2px solid var(--red)}
+.list-row.paused {border-left:2px solid var(--yellow)}
+.list-name{display:flex;align-items:center;gap:8px}
+.list-avatar{
+  width:28px;height:28px;border-radius:6px;flex-shrink:0;
+  background:var(--surface3);border:1px solid var(--border);
+  display:flex;align-items:center;justify-content:center;
+  font-family:var(--mono);font-size:.62rem;font-weight:600;color:var(--accent);
+}
+.list-cname{font-size:.82rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.list-image{font-size:.68rem;color:var(--text2);font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.list-stat{font-size:.78rem;font-weight:600;font-family:var(--mono)}
+.list-actions{display:flex;gap:4px;justify-content:flex-end}
+.la{
+  padding:4px 8px;border-radius:5px;border:1px solid var(--border);
+  font-size:.68rem;font-weight:500;color:var(--text2);background:var(--surface);
+  transition:all .15s;white-space:nowrap;display:flex;align-items:center;gap:4px;
+}
+.la:hover{background:var(--surface3);color:var(--text);border-color:var(--border2)}
+.la.open:hover   {color:var(--accent);border-color:var(--accent)}
+.la.logs:hover   {color:var(--yellow);border-color:var(--yellow)}
+.la.stop:hover   {color:var(--red);border-color:var(--red)}
+.la.start:hover  {color:var(--green);border-color:var(--green)}
+.la.restart:hover{color:var(--orange);border-color:var(--orange)}
+.la:disabled{opacity:.3;pointer-events:none}
+
+/* MODAL */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);backdrop-filter:blur(6px);z-index:200;display:none;align-items:center;justify-content:center;padding:20px}
+.overlay.open{display:flex}
+.modal{
+  width:100%;max-width:900px;max-height:88vh;background:var(--surface);
+  border:1px solid var(--border2);border-radius:14px;display:flex;flex-direction:column;
+  box-shadow:0 24px 80px rgba(0,0,0,.5);animation:modalIn .18s ease;
+}
+@keyframes modalIn{from{opacity:0;transform:scale(.97)}to{opacity:1;transform:none}}
+.mh{display:flex;align-items:center;gap:11px;padding:14px 18px;border-bottom:1px solid var(--border);flex-shrink:0}
+.mh-name{font-size:.92rem;font-weight:600;flex:1}
+.mh-id{font-size:.68rem;color:var(--text2);font-family:var(--mono)}
+.mcontrols{display:flex;gap:7px;align-items:center}
+.tail-sel{background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:4px 7px;font-size:.72rem;font-family:var(--mono);outline:none}
+.close-btn{width:28px;height:28px;border-radius:6px;background:var(--surface2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;color:var(--text2);font-size:.95rem;transition:all .15s}
+.close-btn:hover{background:var(--red);border-color:var(--red);color:#fff}
+.log-filter-bar{padding:9px 18px;border-bottom:1px solid var(--border);flex-shrink:0}
+.log-filter{width:100%;padding:6px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--mono);font-size:.73rem;outline:none}
+.log-filter:focus{border-color:var(--accent)}
+.log-body{flex:1;overflow-y:auto;padding:12px 18px;font-family:var(--mono);font-size:.72rem;line-height:1.75}
+.log-line{display:flex;gap:12px;padding:1px 0}
+.log-line:hover{background:rgba(255,255,255,.025);margin:0 -18px;padding:1px 18px;border-radius:3px}
+.log-ts{color:var(--text3);flex-shrink:0;user-select:none}
+.log-txt{color:var(--text);white-space:pre-wrap;word-break:break-all}
+.log-txt.err{color:var(--red)}
+.log-hl .log-txt{background:rgba(245,158,11,.15);border-radius:2px}
+.log-empty{color:var(--text2);text-align:center;padding:48px;font-size:.83rem}
+
+/* TOAST */
+.toast{
+  position:fixed;bottom:22px;right:22px;z-index:300;
+  display:flex;align-items:center;gap:9px;padding:10px 15px;border-radius:9px;
+  background:var(--surface);border:1px solid var(--border2);box-shadow:var(--shadow);
+  font-size:.78rem;font-weight:500;transform:translateY(70px);opacity:0;
+  transition:transform .3s ease,opacity .3s ease;pointer-events:none;
+}
+.toast.show{transform:translateY(0);opacity:1}
+.toast.ok {border-left:3px solid var(--green)}
+.toast.err{border-left:3px solid var(--red)}
+
+/* EMPTY */
+.empty{grid-column:1/-1;text-align:center;padding:60px 20px;color:var(--text2)}
+.empty-icon{font-size:2.2rem;margin-bottom:10px;opacity:.4}
+.empty h3{font-size:.95rem;font-weight:600;margin-bottom:5px;color:var(--text)}
+.empty p{font-size:.78rem}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="logo"><div class="logo-mark">🚀</div>Servedash</div>
+  <div class="gap"></div>
+  <div class="host-chip"><div class="live-dot"></div><span id="hostText">connecting…</span></div>
+  <button class="icon-btn" id="themeBtn" title="Toggle theme">🌙</button>
+  <button class="refresh-btn" id="refreshBtn">
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+      <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>
+      <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>
+    </svg>
+    Refresh
+  </button>
+</header>
+
+<div class="stats-row">
+  <div class="stat-card"><div class="stat-icon si-blue">📦</div><div><div class="stat-label">Total</div><div class="stat-val sv-blue" id="sTotal">—</div></div></div>
+  <div class="stat-card"><div class="stat-icon si-green">▶</div><div><div class="stat-label">Running</div><div class="stat-val sv-green" id="sRunning">—</div></div></div>
+  <div class="stat-card"><div class="stat-icon si-red">■</div><div><div class="stat-label">Stopped</div><div class="stat-val sv-red" id="sStopped">—</div></div></div>
+  <div class="stat-card"><div class="stat-icon si-gray">🖼</div><div><div class="stat-label">Images</div><div class="stat-val" id="sImages">—</div></div></div>
+</div>
+
+<div class="toolbar">
+  <div class="search-box">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+    <input class="search-input" id="searchInput" placeholder="Search containers…"/>
+  </div>
+  <div class="filters">
+    <button class="f-btn on" data-f="all">All<span class="f-count" id="cAll">0</span></button>
+    <button class="f-btn" data-f="running">Running<span class="f-count" id="cRun">0</span></button>
+    <button class="f-btn" data-f="exited">Stopped<span class="f-count" id="cStop">0</span></button>
+  </div>
+  <div class="view-btns">
+    <button class="icon-btn active" id="gridBtn" title="Grid view">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+    </button>
+    <button class="icon-btn" id="listBtn" title="List view">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+    </button>
+  </div>
+</div>
+
+<div class="content">
+  <div id="container">
+    <div class="grid"><div class="empty"><div class="empty-icon">🐳</div><h3>Loading…</h3></div></div>
+  </div>
+</div>
+
+<!-- LOG MODAL -->
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <div class="mh">
+      <span style="font-size:1.1rem">📋</span>
+      <div><div class="mh-name" id="mName">Logs</div><div class="mh-id" id="mId"></div></div>
+      <div class="mcontrols">
+        <select class="tail-sel" id="tailSel">
+          <option value="50">50 lines</option>
+          <option value="200" selected>200 lines</option>
+          <option value="500">500 lines</option>
+          <option value="1000">1000 lines</option>
+        </select>
+        <button class="refresh-btn" id="reloadLogs" style="padding:5px 10px;font-size:.7rem">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+          Reload
+        </button>
+        <button class="close-btn" id="closeModal">✕</button>
+      </div>
+    </div>
+    <div class="log-filter-bar">
+      <input class="log-filter" id="logFilter" placeholder="Filter log lines…"/>
+    </div>
+    <div class="log-body" id="logBody"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* STATE */
+let containers = [];
+let filter  = 'all';
+let query   = '';
+let viewMode = localStorage.getItem('sd-view') || 'grid';
+let logId   = null;
+let allLines = [];
+
+/* THEME */
+const html = document.documentElement;
+const themeBtn = document.getElementById('themeBtn');
+const initTheme = localStorage.getItem('sd-theme') || 'dark';
+html.dataset.theme = initTheme;
+themeBtn.textContent = initTheme === 'dark' ? '☀️' : '🌙';
+themeBtn.addEventListener('click', () => {
+  const n = html.dataset.theme === 'dark' ? 'light' : 'dark';
+  html.dataset.theme = n;
+  localStorage.setItem('sd-theme', n);
+  themeBtn.textContent = n === 'dark' ? '☀️' : '🌙';
+});
+
+/* VIEW TOGGLE */
+const gridBtn = document.getElementById('gridBtn');
+const listBtn = document.getElementById('listBtn');
+function setView(v) {
+  viewMode = v;
+  localStorage.setItem('sd-view', v);
+  gridBtn.classList.toggle('active', v === 'grid');
+  listBtn.classList.toggle('active', v === 'list');
+  render();
+}
+gridBtn.addEventListener('click', () => setView('grid'));
+listBtn.addEventListener('click', () => setView('list'));
+// init button state
+gridBtn.classList.toggle('active', viewMode === 'grid');
+listBtn.classList.toggle('active', viewMode === 'list');
+
+/* TOAST */
+function toast(msg, type = 'ok') {
+  const el = document.getElementById('toast');
+  el.className = `toast ${type} show`;
+  el.innerHTML = `<span>${type === 'ok' ? '✅' : '❌'}</span>${msg}`;
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.classList.remove('show'), 3000);
+}
+
+/* API */
+async function get(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
+/* LOAD */
+async function loadInfo() {
+  try {
+    const d = await get('/api/info');
+    document.getElementById('hostText').textContent = `Docker ${d.dockerVersion} · ${d.os}`;
+    document.getElementById('sTotal').textContent   = d.containers;
+    document.getElementById('sRunning').textContent = d.running;
+    document.getElementById('sStopped').textContent = d.stopped;
+    document.getElementById('sImages').textContent  = d.images;
+  } catch(e) {
+    document.getElementById('hostText').textContent = 'Connection error';
+  }
+}
+
+async function loadContainers() {
+  const btn = document.getElementById('refreshBtn');
+  btn.classList.add('spinning');
+  try {
+    containers = await get('/api/containers');
+    render();
+    updateCounts();
+  } catch(e) {
+    toast('Failed to load containers', 'err');
+  }
+  btn.classList.remove('spinning');
+}
+
+async function loadAll() {
+  await Promise.all([loadInfo(), loadContainers()]);
+}
+
+/* HELPERS */
+function sClass(s) { return s === 'running' ? 'running' : s === 'paused' ? 'paused' : 'exited'; }
+function sLabel(s) { return s === 'running' ? 'Running' : s === 'paused' ? 'Paused' : s === 'created' ? 'Created' : 'Stopped'; }
+function init(name) { return name.slice(0,2).toUpperCase(); }
+function barCls(v) { return v > 80 ? 'hot' : ''; }
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function buildUrl(c) {
+  if (c.url) return c.url;
+  if (c.port) return `http://${window.location.hostname}:${c.port}`;
+  return null;
+}
+
+// All public ports for a container
+function publicPorts(c) {
+  return (c.ports || []).filter(p => p.PublicPort);
+}
+
+// Build URL from a specific port entry
+function portUrl(p) {
+  const proto = p.PublicPort === 443 || p.PublicPort === 9443 || p.PublicPort === 8443 ? 'https' : 'http';
+  return `${proto}://${window.location.hostname}:${p.PublicPort}`;
+}
+
+// Toggle port dropdown (closes all others first)
+function togglePortMenu(el) {
+  const isOpen = el.classList.contains('open');
+  document.querySelectorAll('.port-menu-wrap.open').forEach(w => w.classList.remove('open'));
+  if (!isOpen) {
+    el.classList.add('open');
+    // Close when clicking outside
+    setTimeout(() => {
+      document.addEventListener('click', function handler(e) {
+        if (!el.contains(e.target)) {
+          el.classList.remove('open');
+          document.removeEventListener('click', handler);
+        }
+      });
+    }, 0);
+  }
+}
+
+/* FILTER */
+function filtered() {
+  return containers.filter(c => {
+    const mf = filter === 'all' || (filter === 'running' && c.status === 'running') || (filter === 'exited' && c.status !== 'running');
+    const mq = !query || c.name.toLowerCase().includes(query) || c.image.toLowerCase().includes(query);
+    return mf && mq;
+  });
+}
+
+function updateCounts() {
+  document.getElementById('cAll').textContent  = containers.length;
+  document.getElementById('cRun').textContent  = containers.filter(c=>c.status==='running').length;
+  document.getElementById('cStop').textContent = containers.filter(c=>c.status!=='running').length;
+}
+
+/* RENDER */
+function render() {
+  const wrap = document.getElementById('container');
+  const items = filtered();
+  if (!items.length) {
+    wrap.innerHTML = `<div class="${viewMode === 'grid' ? 'grid' : ''}"><div class="empty"><div class="empty-icon">🔍</div><h3>No containers found</h3><p>Try adjusting your filter or search.</p></div></div>`;
+    return;
+  }
+  wrap.innerHTML = viewMode === 'grid' ? renderGrid(items) : renderList(items);
+  wrap.querySelectorAll('.card, .list-row').forEach((el,i) => { el.style.animationDelay = `${i*20}ms`; });
+}
+
+function renderGrid(items) {
+  return `<div class="grid">${items.map(c => {
+    const sc  = sClass(c.status);
+    const hs  = c.stats !== null;
+    const cpu = hs ? c.stats.cpu : 0;
+    const mem = hs ? c.stats.memPercent : 0;
+    const url = buildUrl(c);
+    const pubPorts = publicPorts(c);
+    const multiPort = !c.url && pubPorts.length > 1;
+    const ports = (c.ports||[]).filter(p=>p.PublicPort).slice(0,4);
+    const isRun = c.status === 'running';
+
+    // Build open button — dropdown if multiple ports, normal if single/label
+    const openBtn = multiPort
+      ? `<div class="port-menu-wrap" id="pmw-${c.id}" onclick="event.stopPropagation();togglePortMenu(this)">
+          <button class="ca open">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+            Open
+            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-left:2px"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          <div class="port-dropdown">
+            ${pubPorts.map(p => `
+              <div class="port-option" onclick="openURL('${portUrl(p)}')">
+                <span class="port-option-port">:${p.PublicPort}</span>
+                <span class="port-option-proto">${portUrl(p).startsWith('https') ? 'HTTPS' : 'HTTP'} → ${p.PrivatePort}</span>
+              </div>`).join('')}
+          </div>
+        </div>`
+      : `<button class="ca open" onclick="openURL('${url}')" ${url?'':'disabled'} title="${url||'No URL'}">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+          Open
+        </button>`;
+    return `<div class="card ${sc}">
+      <div class="ch">
+        <div class="avatar">${init(c.name)}</div>
+        <div class="cmeta">
+          <div class="cname" title="${esc(c.name)}">${esc(c.name)}</div>
+          <div class="cimage" title="${esc(c.image)}">${esc(c.image)}</div>
+        </div>
+        <div class="sbadge ${sc}"><div class="sdot"></div>${sLabel(c.status)}</div>
+      </div>
+      ${hs ? `<div class="cstats">
+        <div class="cs"><div class="cs-label">CPU</div><div class="cs-val">${cpu}%</div><div class="cs-bar"><div class="cs-fill cpu ${barCls(cpu)}" style="width:${Math.min(cpu,100)}%"></div></div></div>
+        <div class="cs"><div class="cs-label">Memory</div><div class="cs-val">${hs ? c.stats.memUsage : 0} MB</div><div class="cs-bar"><div class="cs-fill mem ${barCls(mem)}" style="width:${Math.min(mem,100)}%"></div></div></div>
+      </div>` : ''}
+      ${ports.length ? `<div class="cports">${ports.map(p=>`<span class="ptag">${p.PublicPort}→${p.PrivatePort}</span>`).join('')}</div>` : ''}
+      <div class="cactions">
+        ${openBtn}
+        <button class="ca logs" onclick="openLogs('${c.fullId}','${esc(c.name)}')">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+          Logs
+        </button>
+        ${isRun ? `
+        <button class="ca restart" onclick="act('${c.fullId}','restart','${esc(c.name)}')">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+          Restart
+        </button>
+        <button class="ca stop" onclick="act('${c.fullId}','stop','${esc(c.name)}')">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+          Stop
+        </button>` : `
+        <button class="ca start" onclick="act('${c.fullId}','start','${esc(c.name)}')">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          Start
+        </button>`}
+      </div>
+    </div>`;
+  }).join('')}</div>`;
+}
+
+function renderList(items) {
+  return `<div class="list">
+    <div class="list-header">
+      <div>Container</div><div>Image</div><div>Status</div><div>CPU</div><div>Memory</div><div style="text-align:right">Actions</div>
+    </div>
+    ${items.map(c => {
+      const sc  = sClass(c.status);
+      const hs  = c.stats !== null;
+      const cpu = hs ? `${c.stats.cpu}%` : '—';
+      const mem = hs ? `${c.stats.memUsage} MB` : '—';
+      const url = buildUrl(c);
+      const pubPorts = publicPorts(c);
+      const multiPort = !c.url && pubPorts.length > 1;
+      const isRun = c.status === 'running';
+
+      const listOpenBtn = multiPort
+        ? `<div class="port-menu-wrap" id="lpmw-${c.id}" onclick="event.stopPropagation();togglePortMenu(this)" style="position:relative">
+            <button class="la open">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+              Open ▾
+            </button>
+            <div class="port-dropdown">
+              ${pubPorts.map(p => `
+                <div class="port-option" onclick="openURL('${portUrl(p)}')">
+                  <span class="port-option-port">:${p.PublicPort}</span>
+                  <span class="port-option-proto">${portUrl(p).startsWith('https') ? 'HTTPS' : 'HTTP'} → ${p.PrivatePort}</span>
+                </div>`).join('')}
+            </div>
+          </div>`
+        : `<button class="la open" onclick="openURL('${url}')" ${url?'':'disabled'}>
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+            Open
+          </button>`;
+
+      return `<div class="list-row ${sc}">
+        <div class="list-name">
+          <div class="list-avatar">${init(c.name)}</div>
+          <div class="list-cname" title="${esc(c.name)}">${esc(c.name)}</div>
+        </div>
+        <div class="list-image" title="${esc(c.image)}">${esc(c.image)}</div>
+        <div><div class="sbadge ${sc}"><div class="sdot"></div>${sLabel(c.status)}</div></div>
+        <div class="list-stat">${cpu}</div>
+        <div class="list-stat">${mem}</div>
+        <div class="list-actions">
+          ${listOpenBtn}
+          <button class="la logs" onclick="openLogs('${c.fullId}','${esc(c.name)}')">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            Logs
+          </button>
+          ${isRun ? `
+          <button class="la restart" onclick="act('${c.fullId}','restart','${esc(c.name)}')">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+            Restart
+          </button>
+          <button class="la stop" onclick="act('${c.fullId}','stop','${esc(c.name)}')">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+            Stop
+          </button>` : `
+          <button class="la start" onclick="act('${c.fullId}','start','${esc(c.name)}')">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            Start
+          </button>`}
+        </div>
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+
+/* FILTER / SEARCH */
+document.querySelectorAll('.f-btn').forEach(b => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('.f-btn').forEach(x => x.classList.remove('on'));
+    b.classList.add('on');
+    filter = b.dataset.f;
+    render();
+  });
+});
+document.getElementById('searchInput').addEventListener('input', e => {
+  query = e.target.value.toLowerCase();
+  render();
+});
+
+/* ACTIONS */
+function openURL(url) {
+  if (url && url !== 'null' && url !== 'undefined') window.open(url, '_blank');
+}
+async function act(id, action, name) {
+  try {
+    const r = await fetch(`/api/containers/${id}/${action}`, { method: 'POST' });
+    if (!r.ok) throw new Error();
+    toast(`${name} — ${action} successful`);
+    setTimeout(loadAll, 900);
+  } catch {
+    toast(`Failed to ${action} ${name}`, 'err');
+  }
+}
+
+/* LOGS */
+function parseTS(ts) {
+  try { return new Date(ts.split(' ')[0]).toLocaleTimeString(); } catch { return ts.slice(0,19); }
+}
+async function openLogs(id, name) {
+  logId = id;
+  document.getElementById('mName').textContent = name;
+  document.getElementById('mId').textContent   = id.slice(0,12);
+  document.getElementById('overlay').classList.add('open');
+  document.getElementById('logFilter').value = '';
+  await fetchLogs();
+}
+async function fetchLogs() {
+  const body = document.getElementById('logBody');
+  const tail = document.getElementById('tailSel').value;
+  body.innerHTML = '<div class="log-empty">Loading…</div>';
+  try {
+    const d = await get(`/api/containers/${logId}/logs?tail=${tail}`);
+    allLines = d.logs || [];
+    renderLogs('');
+  } catch {
+    body.innerHTML = `<div class="log-empty" style="color:var(--red)">Error loading logs.</div>`;
+  }
+}
+function renderLogs(ft) {
+  const body = document.getElementById('logBody');
+  const f = ft.toLowerCase();
+  const lines = f ? allLines.filter(l => l.line.toLowerCase().includes(f)) : allLines;
+  if (!lines.length) { body.innerHTML = '<div class="log-empty">No log entries found.</div>'; return; }
+  body.innerHTML = lines.map(({stream, line}) => {
+    const parts = line.split(' ');
+    const ts   = parseTS(parts[0] || '');
+    const text = esc(parts.slice(1).join(' '));
+    const hl   = f && line.toLowerCase().includes(f) ? 'log-hl' : '';
+    return `<div class="log-line ${hl}"><span class="log-ts">${ts}</span><span class="log-txt ${stream==='stderr'?'err':''}">${text}</span></div>`;
+  }).join('');
+  body.scrollTop = body.scrollHeight;
+}
+document.getElementById('logFilter').addEventListener('input', e => renderLogs(e.target.value));
+document.getElementById('tailSel').addEventListener('change', fetchLogs);
+document.getElementById('reloadLogs').addEventListener('click', fetchLogs);
+document.getElementById('closeModal').addEventListener('click', () => document.getElementById('overlay').classList.remove('open'));
+document.getElementById('overlay').addEventListener('click', e => { if (e.target === document.getElementById('overlay')) document.getElementById('overlay').classList.remove('open'); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') document.getElementById('overlay').classList.remove('open'); });
+
+/* REFRESH */
+document.getElementById('refreshBtn').addEventListener('click', loadAll);
+
+/* INIT */
+loadAll();
+</script>
+</body>
+</html>

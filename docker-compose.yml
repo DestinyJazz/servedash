@@ -1,0 +1,11 @@
+services:
+  servedash:
+    image: ghcr.io/destinyjazz/servedash:latest
+    container_name: servedash
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3000}:3000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - PORT=3000
