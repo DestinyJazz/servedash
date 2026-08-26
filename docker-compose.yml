@@ -6,8 +6,11 @@ services:
     ports:
       - "3000:3000"
     volumes:
-      # Docker socket, read-only — required for container discovery
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Docker socket, read-write — required for container discovery, the
+      # built-in terminal (docker exec), and one-click image updates
+      # (pull/stop/recreate). This is equivalent to root on the host.
+      # Only expose Servedash on a trusted network.
+      - /var/run/docker.sock:/var/run/docker.sock
       # Persists manual drag-and-drop order across restarts
       - servedash-data:/app-data
     environment:

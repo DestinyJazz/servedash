@@ -3,9 +3,11 @@ const Docker = require('dockerode');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
+const http = require('http');
+const { WebSocketServer } = require('ws');
 
 // Servedash version — keep in sync with the git tag / GHCR image tag on release.
-const VERSION = '1.2.1';
+const VERSION = '1.3.0';
 
 const app = express();
 const docker = new Docker({ socketPath: '/var/run/docker.sock' });
@@ -249,6 +251,175 @@ app.get('/api/updates', async (req, res) => {
   }
 });
 
+/* ──────────────────────────────────────────────────────────
+   ONE-CLICK IMAGE UPDATE (pull + recreate)
+   Unlike the read-only check above, this actually replaces the
+   container. Containers matching known "safe" shapes (no compose/
+   Portainer stack ownership, no legacy linking, single default
+   network) can be recreated with one click; anything else is
+   flagged risky with reasons and requires client confirmation,
+   which the server re-validates rather than trusting.
+   ────────────────────────────────────────────────────────── */
+
+function classifyRisk(info) {
+  const reasons = [];
+  const labels = (info.Config && info.Config.Labels) || {};
+
+  if (labels['com.docker.compose.project']) {
+    reasons.push('Managed by docker-compose — recreating here may drift from your compose file; next "docker compose up -d" may not behave as expected.');
+  }
+  if (Object.keys(labels).some((k) => k.startsWith('io.portainer.'))) {
+    reasons.push('Managed by a Portainer stack — recreating here may cause it to fall out of sync with Portainer.');
+  }
+  const hc = info.HostConfig || {};
+  if ((hc.VolumesFrom || []).length) reasons.push('Uses VolumesFrom (mounts volumes from another container).');
+  if ((hc.Links || []).length) reasons.push('Uses legacy container links (--link).');
+
+  const nets = Object.entries((info.NetworkSettings && info.NetworkSettings.Networks) || {});
+  const hasCustomNet = nets.length > 1 || nets.some(([, n]) =>
+    (n.IPAMConfig && n.IPAMConfig.IPv4Address) || (n.Aliases || []).some((a) => !a.startsWith(info.Id.slice(0, 12)))
+  );
+  if (hasCustomNet) reasons.push('Custom network configuration (multiple networks, a static IP, or network aliases).');
+
+  return { risky: reasons.length > 0, reasons };
+}
+
+// GET risk assessment for updating a single container
+app.get('/api/containers/:id/update-risk', async (req, res) => {
+  try {
+    const info = await docker.getContainer(req.params.id).inspect();
+    res.json(classifyRisk(info));
+  } catch (err) {
+    res.status(err.statusCode === 404 ? 404 : 500).json({ error: err.message });
+  }
+});
+
+const UPDATE_IN_PROGRESS = new Set(); // container ids currently being recreated
+
+// Pull an image, awaiting completion (dockerode's pull() streams progress events).
+function pullImage(imageRef) {
+  return new Promise((resolve, reject) => {
+    docker.pull(imageRef, (err, stream) => {
+      if (err) return reject(err);
+      docker.modem.followProgress(stream, (err2) => (err2 ? reject(err2) : resolve()));
+    });
+  });
+}
+
+// Rebuild a createContainer NetworkingConfig from an inspected container's
+// NetworkSettings, preserving aliases / static IPs per network.
+function rebuildNetworkingConfig(networks) {
+  const EndpointsConfig = {};
+  for (const [netName, net] of Object.entries(networks || {})) {
+    EndpointsConfig[netName] = {
+      Aliases: net.Aliases || undefined,
+      IPAMConfig: net.IPAMConfig && net.IPAMConfig.IPv4Address ? { IPv4Address: net.IPAMConfig.IPv4Address } : undefined,
+    };
+  }
+  return { EndpointsConfig };
+}
+
+// Poll until a container reports Running, or give up.
+async function waitUntilRunning(container, attempts = 10, delayMs = 500) {
+  for (let i = 0; i < attempts; i++) {
+    const info = await container.inspect();
+    if (info.State.Running) return true;
+    await new Promise((r) => setTimeout(r, delayMs));
+  }
+  return false;
+}
+
+// POST recreate a container against a freshly pulled image. Body: { confirm: boolean }
+// Order matters: never stop the old container before the new image is pulled,
+// and never remove the old container before the new one is confirmed running —
+// so a failure at any step leaves at least one of the two alive.
+app.post('/api/containers/:id/update', async (req, res) => {
+  const { id } = req.params;
+  if (UPDATE_IN_PROGRESS.has(id)) {
+    return res.status(409).json({ error: 'An update for this container is already in progress' });
+  }
+  UPDATE_IN_PROGRESS.add(id);
+
+  const container = docker.getContainer(id);
+  let old;
+  try {
+    old = await container.inspect();
+  } catch (err) {
+    UPDATE_IN_PROGRESS.delete(id);
+    return res.status(404).json({ error: 'Container not found' });
+  }
+
+  const risk = classifyRisk(old);
+  if (risk.risky && !req.body.confirm) {
+    UPDATE_IN_PROGRESS.delete(id);
+    return res.status(400).json({ error: 'This update is risky and requires confirmation', ...risk });
+  }
+
+  const origName = old.Name.replace(/^\//, '');
+  const rollbackName = `${origName}_sd_rollback_${Date.now()}`;
+  const wasRunning = old.State.Running;
+
+  // Renames the old container back to its original name and, if it was
+  // running before we touched it, restarts it. Guarded so it only ever
+  // runs once, from whichever failure branch hits it first.
+  let restored = false;
+  async function restoreOriginal() {
+    if (restored) return;
+    restored = true;
+    await container.rename({ name: origName }).catch(() => {});
+    if (wasRunning) await container.start().catch(() => {});
+  }
+
+  let renamed = false;
+  let newContainer = null;
+  try {
+    // 1. Pull first — if this fails, nothing about the running container changes.
+    await pullImage(old.Config.Image);
+
+    // 2. Rename the old container out of the way, then stop it, so the new
+    //    container can take its original name.
+    await container.rename({ name: rollbackName });
+    renamed = true;
+    await container.stop({ t: 10 }).catch((e) => {
+      if (e.statusCode !== 304 /* already stopped */) throw e;
+    });
+
+    // 3. Create + start the replacement under the original name/config.
+    //    Any failure here — including createContainer itself — restores
+    //    the original rather than leaving it stopped under the rollback name.
+    newContainer = await docker.createContainer({
+      name: origName,
+      Image: old.Config.Image,
+      Cmd: old.Config.Cmd,
+      Entrypoint: old.Config.Entrypoint,
+      Env: old.Config.Env,
+      Labels: old.Config.Labels,
+      ExposedPorts: old.Config.ExposedPorts,
+      WorkingDir: old.Config.WorkingDir,
+      User: old.Config.User,
+      HostConfig: old.HostConfig,
+      NetworkingConfig: rebuildNetworkingConfig(old.NetworkSettings.Networks),
+    });
+    await newContainer.start();
+    const running = await waitUntilRunning(newContainer);
+    if (!running) throw new Error('New container did not reach Running state');
+
+    // 4. Only now remove the renamed original.
+    await container.remove({ force: true });
+    res.json({ success: true });
+  } catch (err) {
+    if (newContainer) await newContainer.remove({ force: true }).catch(() => {});
+    if (renamed) {
+      await restoreOriginal();
+      res.status(500).json({ error: `Update failed, original container restored: ${err.message}` });
+    } else {
+      res.status(500).json({ error: err.message });
+    }
+  } finally {
+    UPDATE_IN_PROGRESS.delete(id);
+  }
+});
+
 // GET all containers with stats
 app.get('/api/containers', async (req, res) => {
   try {
@@ -392,8 +563,116 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '../frontend/public/index.html'));
 });
 
+/* ──────────────────────────────────────────────────────────
+   WEB TERMINAL (docker exec over WebSocket)
+   Client connects to /ws/exec/:id, we detect a usable shell,
+   attach an interactive exec, and pipe bytes both ways as
+   base64 JSON frames. One exec process per WS connection.
+   ────────────────────────────────────────────────────────── */
+
+// Find a shell that actually exists in the container. Runs a throwaway
+// non-interactive exec rather than assuming bash is present.
+async function detectShell(container) {
+  const probe = await container.exec({
+    Cmd: ['sh', '-c', 'command -v bash || command -v sh || echo NONE'],
+    AttachStdout: true,
+    AttachStderr: true,
+  });
+  const stream = await probe.start({ hijack: true, Tty: false });
+  const chunks = [];
+  await new Promise((resolve, reject) => {
+    container.modem.demuxStream(stream, { write: (c) => chunks.push(c) }, { write: (c) => chunks.push(c) });
+    stream.on('end', resolve);
+    stream.on('error', reject);
+  });
+  const out = Buffer.concat(chunks).toString('utf8').trim().split('\n').pop().trim();
+  return out === 'NONE' || !out ? null : out;
+}
+
+function wsSend(ws, msg) {
+  if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
+}
+
+const execStreams = new Map(); // ws -> exec duplex stream, for cleanup on disconnect
+
+async function handleExecSocket(ws, containerId) {
+  const container = docker.getContainer(containerId);
+  let info;
+  try {
+    info = await container.inspect();
+  } catch {
+    wsSend(ws, { type: 'error', message: 'Container not found' });
+    return ws.close(1008);
+  }
+  if (!info.State.Running) {
+    wsSend(ws, { type: 'error', message: 'Container is not running' });
+    return ws.close(1008);
+  }
+
+  let shell;
+  try {
+    shell = await detectShell(container);
+  } catch (e) {
+    wsSend(ws, { type: 'error', message: `Could not probe container: ${e.message}` });
+    return ws.close(1011);
+  }
+  if (!shell) {
+    wsSend(ws, { type: 'error', message: 'No shell (bash or sh) found in this container' });
+    return ws.close(1008);
+  }
+
+  const exec = await container.exec({
+    Cmd: [shell],
+    AttachStdin: true,
+    AttachStdout: true,
+    AttachStderr: true,
+    Tty: true,
+  });
+  const stream = await exec.start({ hijack: true, stdin: true, Tty: true });
+  execStreams.set(ws, stream);
+
+  stream.on('data', (chunk) => wsSend(ws, { type: 'data', data: chunk.toString('base64') }));
+  stream.on('error', () => ws.close(1011));
+  stream.on('close', () => ws.close(1000));
+
+  ws.on('message', (raw) => {
+    let msg;
+    try { msg = JSON.parse(raw); } catch { return; }
+    if (msg.type === 'data') {
+      stream.write(Buffer.from(msg.data, 'base64'));
+    } else if (msg.type === 'resize') {
+      exec.resize({ h: msg.rows, w: msg.cols }).catch(() => {});
+    }
+  });
+
+  ws.on('close', () => {
+    const s = execStreams.get(ws);
+    if (s) { s.end(); s.destroy && s.destroy(); execStreams.delete(ws); }
+  });
+}
+
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+const server = http.createServer(app);
+// noServer: 'path' on WebSocketServer only exact-matches; we need the
+// container id as a suffix, so route the upgrade manually instead.
+const wss = new WebSocketServer({ noServer: true });
+
+server.on('upgrade', (req, socket, head) => {
+  const match = /^\/ws\/exec\/([^/?]+)/.exec(req.url || '');
+  if (!match) return socket.destroy();
+  wss.handleUpgrade(req, socket, head, (ws) => {
+    wss.emit('connection', ws, req, match[1]);
+  });
+});
+
+wss.on('connection', (ws, req, containerId) => {
+  handleExecSocket(ws, containerId).catch((e) => {
+    wsSend(ws, { type: 'error', message: e.message });
+    ws.close(1011);
+  });
+});
+
+server.listen(PORT, () => {
   console.log('');
   console.log(`  Servedash v${VERSION}`);
   console.log(`  ────────────────────────────`);

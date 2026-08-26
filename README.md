@@ -22,8 +22,10 @@ Auto-discovers all your containers, shows CPU/RAM, lets you tail logs, and opens
 - Status filter (Running, Stopped, Paused, Unhealthy) with live counts
 - Detects unhealthy containers (running but failing their healthcheck)
 - Drag cards to reorder, or sort by name, uptime, or available updates
-- Image update detection — flags containers when a newer image is available (Docker Hub, GHCR, lscr.io)
+- Image update detection — flags containers when a newer image is available (Docker Hub, GHCR, lscr.io), with a one-click pull + recreate (see [Image updates](#image-updates))
 ![Servedash](assets/update.png)
+- Built-in web terminal — open an interactive shell inside any running container, no SSH required
+![Servedash](assets/terminal.png)
 - Grid and list view
 - Dark / light mode
 
@@ -62,8 +64,16 @@ Servedash can check whether a newer image is available for your containers. When
 
 - Click the cloud icon in the header to check on demand
 - Or set `UPDATE_CHECK_INTERVAL` to check automatically
+- Only public images on Docker Hub, GHCR, and lscr.io are checked. Private and other registries show as unsupported.
 
-This is read-only. It tells you an update exists but never touches your containers. Only public images on Docker Hub, GHCR, and lscr.io are checked. Private and other registries show as unsupported.
+Clicking the "Update" badge pulls the new image and recreates the container with its current configuration (ports, volumes, env, networks). Before touching anything, Servedash classifies the update:
+
+- **Safe** (not managed by docker-compose or a Portainer stack, no custom network setup, no legacy container linking) — one click, no extra confirmation.
+![Servedash](assets/update-safe.png)
+- **Risky** (compose-managed, Portainer-managed, or has custom networking) — Servedash explains why and requires you to check "I understand the risk, update anyway" before proceeding. Recreating a compose- or Portainer-managed container here can drift from your compose file / stack; the next `docker compose up -d` or Portainer redeploy may not behave as expected.
+![Servedash](assets/update-warning.png)
+
+If anything fails partway through a recreate, Servedash restores the original container rather than leaving you with neither.
 
 ## Configuration
 
@@ -96,7 +106,7 @@ docker compose -f docker-compose.dev.yml up -d --build
 
 ## Security
 
-Servedash mounts the Docker socket read-only. Don't expose it to the public internet — keep it on your local network or put it behind a reverse proxy with auth.
+Servedash mounts the Docker socket read-write — it needs this for the built-in terminal (`docker exec`) and one-click image updates (pull/stop/create/remove). This is equivalent to root on the host. Don't expose it to the public internet — keep it on your local network or put it behind a reverse proxy with auth.
 
 ---
 
@@ -124,8 +134,10 @@ Servedash mounts the Docker socket read-only. Don't expose it to the public inte
 - 状态筛选（Running、Stopped、Paused、Unhealthy），带实时计数
 - 检测不健康容器（在运行但健康检查失败）
 - 拖拽卡片排序，或按名称、运行时间、有无更新排序
-- 镜像更新检测 — 有新版镜像时在卡片上标记（Docker Hub、GHCR、lscr.io）
+- 镜像更新检测 — 有新版镜像时在卡片上标记（Docker Hub、GHCR、lscr.io），支持一键 pull + 重建（见「镜像更新」）
 ![Servedash](assets/update.png)
+- 内置网页终端 — 直接在浏览器里打开任意运行中容器的交互式 shell，不需要 SSH
+![Servedash](assets/terminal.png)
 - 支持 Grid 和 List 两种视图
 - 深色 / 浅色主题切换
 
@@ -164,8 +176,16 @@ Servedash 可以检查容器是否有新版镜像。有的话，卡片上会显�
 
 - 点击 header 的云图标手动检查
 - 或设置 `UPDATE_CHECK_INTERVAL` 自动检查
+- 只检查 Docker Hub、GHCR、lscr.io 上的公开镜像。私有和其他 registry 显示为不支持。
 
-这是只读的，只告诉你有更新，不会改动你的容器。只检查 Docker Hub、GHCR、lscr.io 上的公开镜像。私有和其他 registry 显示为不支持。
+点击「Update」标记会 pull 新镜像，并用当前容器的配置（端口、volume、环境变量、网络）重建容器。在改动任何东西之前，Servedash 会先做风险分类：
+
+- **安全**（不是 docker-compose 或 Portainer stack 管理的、没有自定义网络配置、没有用旧式容器 link）— 一键完成，不需要额外确认。
+![Servedash](assets/update-safe.png)
+- **有风险**（compose 管理、Portainer 管理，或有自定义网络配置）— Servedash 会说明具体原因，需要你勾选「我理解风险，仍然更新」才会继续。在这里重建一个 compose/Portainer 管理的容器，可能会让它跟你的 compose 文件或 stack 状态不一致，下次 `docker compose up -d` 或 Portainer redeploy 时行为可能对不上。
+![Servedash](assets/update-warning.png)
+
+如果重建过程中途失败，Servedash 会恢复原容器，不会让你两边都没有。
 
 ## 配置项
 
@@ -198,7 +218,7 @@ docker compose -f docker-compose.dev.yml up -d --build
 
 ## 安全说明
 
-Servedash 以只读方式挂载 Docker socket。不要暴露在公网上，建议放在内网或者用带认证的反向代理保护。
+Servedash 以读写方式挂载 Docker socket —— 内置终端（`docker exec`）和一键镜像更新（pull/stop/create/remove）都需要这个权限，等同于宿主机的 root 权限。不要暴露在公网上，建议放在内网或者用带认证的反向代理保护。
 
 ## License
 

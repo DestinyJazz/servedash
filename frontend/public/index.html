@@ -9,6 +9,7 @@
 <link rel="apple-touch-icon" href="apple-touch-icon.png"/>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="vendor/xterm/xterm.css"/>
 <style>
 :root {
   --bg:        #0d0f14;
@@ -199,10 +200,14 @@ button{cursor:pointer;border:none;background:none;font-family:inherit;color:inhe
 .sbadge.running .sdot{animation:blink 2s infinite}
 .sbadge.unhealthy .sdot{animation:blink 1s infinite}
 .ubadge{
-  display:inline-flex;align-items:center;gap:3px;margin-left:6px;padding:3px 8px;border-radius:5px;
-  font-size:.66rem;font-weight:700;font-family:var(--mono);flex-shrink:0;
-  background:var(--yellow-bg);color:var(--yellow);cursor:default;
+  display:inline-flex;align-items:center;gap:4px;margin-left:6px;padding:4px 9px;border-radius:6px;
+  font-size:.66rem;font-weight:700;font-family:var(--mono);flex-shrink:0;border:none;
+  background:var(--yellow);color:#1a1400;
+  cursor:pointer;box-shadow:0 1px 3px rgba(245,158,11,.45);
+  transition:filter .15s,transform .1s,box-shadow .15s;
 }
+.ubadge:hover{filter:brightness(1.1);box-shadow:0 3px 8px rgba(245,158,11,.55);transform:translateY(-1px)}
+.ubadge:active{transform:translateY(0) scale(.96);box-shadow:0 1px 2px rgba(245,158,11,.4)}
 
 .cstats{display:flex;gap:1px;margin:0 14px 11px;background:var(--border);border-radius:7px;overflow:hidden}
 .cs{flex:1;background:var(--surface2);padding:7px 10px}
@@ -267,6 +272,7 @@ button{cursor:pointer;border:none;background:none;font-family:inherit;color:inhe
 .ca:hover{background:var(--surface2);color:var(--text)}
 .ca.open:hover   {color:var(--accent)}
 .ca.logs:hover   {color:var(--yellow)}
+.ca.term:hover   {color:var(--accent)}
 .ca.start:hover  {color:var(--green)}
 .ca.stop:hover   {color:var(--red)}
 .ca.restart:hover{color:var(--orange)}
@@ -311,6 +317,7 @@ button{cursor:pointer;border:none;background:none;font-family:inherit;color:inhe
 .la:hover{background:var(--surface3);color:var(--text);border-color:var(--border2)}
 .la.open:hover   {color:var(--accent);border-color:var(--accent)}
 .la.logs:hover   {color:var(--yellow);border-color:var(--yellow)}
+.la.term:hover   {color:var(--accent);border-color:var(--accent)}
 .la.stop:hover   {color:var(--red);border-color:var(--red)}
 .la.start:hover  {color:var(--green);border-color:var(--green)}
 .la.restart:hover{color:var(--orange);border-color:var(--orange)}
@@ -343,6 +350,26 @@ button{cursor:pointer;border:none;background:none;font-family:inherit;color:inhe
 .log-txt.err{color:var(--red)}
 .log-hl .log-txt{background:rgba(245,158,11,.15);border-radius:2px}
 .log-empty{color:var(--text2);text-align:center;padding:48px;font-size:.83rem}
+
+/* TERMINAL MODAL */
+.term-modal{max-width:960px;height:70vh}
+.term-body{flex:1;overflow:hidden;padding:10px 14px;background:#0a0c10;display:flex}
+.term-body .xterm{flex:1}
+.term-status{padding:9px 18px;border-bottom:1px solid var(--border);flex-shrink:0;font-size:.76rem;color:var(--text2);font-family:var(--mono)}
+.term-status.err{color:var(--red)}
+
+/* CONFIRM / UPDATE MODAL */
+.confirm-modal{max-width:460px}
+.confirm-body{padding:18px;font-size:.83rem;line-height:1.6}
+.confirm-reasons{list-style:none;margin:10px 0 0;padding:0;display:flex;flex-direction:column;gap:8px}
+.confirm-reasons li{background:var(--yellow-bg);border:1px solid rgba(245,158,11,.3);border-radius:8px;padding:9px 11px;font-size:.78rem;color:var(--text)}
+.confirm-check{display:flex;align-items:flex-start;gap:8px;margin-top:14px;font-size:.78rem;color:var(--text2);cursor:pointer}
+.confirm-check input{margin-top:2px}
+.confirm-actions{display:flex;justify-content:flex-end;gap:8px;padding:14px 18px;border-top:1px solid var(--border)}
+.confirm-actions button{padding:7px 14px;border-radius:7px;font-size:.78rem;font-weight:600;border:1px solid var(--border2);background:var(--surface2);color:var(--text)}
+.confirm-actions .btn-primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.confirm-actions .btn-primary.risky{background:var(--orange);border-color:var(--orange)}
+.confirm-actions .btn-primary:disabled{opacity:.4;pointer-events:none}
 
 /* TOAST */
 .toast{
@@ -489,7 +516,42 @@ button{cursor:pointer;border:none;background:none;font-family:inherit;color:inhe
   </div>
 </div>
 
+<!-- TERMINAL MODAL -->
+<div class="overlay" id="termOverlay">
+  <div class="modal term-modal">
+    <div class="mh">
+      <span style="font-size:1.1rem">⌨️</span>
+      <div><div class="mh-name" id="termName">Terminal</div><div class="mh-id" id="termId"></div></div>
+      <div class="mcontrols">
+        <button class="close-btn" id="closeTerm">✕</button>
+      </div>
+    </div>
+    <div class="term-status" id="termStatus">Connecting…</div>
+    <div class="term-body"><div id="termContainer" style="width:100%"></div></div>
+  </div>
+</div>
+
+<!-- UPDATE CONFIRM MODAL -->
+<div class="overlay" id="updateOverlay">
+  <div class="modal confirm-modal">
+    <div class="mh">
+      <span style="font-size:1.1rem">↑</span>
+      <div><div class="mh-name" id="updName">Update container</div><div class="mh-id" id="updId"></div></div>
+      <div class="mcontrols">
+        <button class="close-btn" id="closeUpdate">✕</button>
+      </div>
+    </div>
+    <div class="confirm-body" id="updateBody"></div>
+    <div class="confirm-actions">
+      <button id="updateCancelBtn">Cancel</button>
+      <button class="btn-primary" id="updateConfirmBtn">Update now</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
+<script src="vendor/xterm/xterm.min.js"></script>
+<script src="vendor/xterm/xterm-addon-fit.min.js"></script>
 
 <script>
 /* STATE */
@@ -897,7 +959,7 @@ function renderGrid(items) {
           <div class="cimage" title="${esc(c.image)}">${esc(c.image)}</div>
         </div>
         <div class="sbadge ${sc}" data-field="badge"><div class="sdot"></div>${sLabel(c)}</div>
-        ${updates[c.name] && updates[c.name].status === 'update' ? `<div class="ubadge" title="A newer image is available on Docker Hub">↑ Update</div>` : ''}
+        ${updates[c.name] && updates[c.name].status === 'update' ? `<div class="ubadge" title="A newer image is available — click to update" onclick="event.stopPropagation();openUpdateConfirm('${c.fullId}','${esc(c.name)}')">↑ Update</div>` : ''}
       </div>
       ${hs ? `<div class="cstats">
         <div class="cs"><div class="cs-label">CPU</div><div class="cs-val" data-field="cpu-val">${cpu}%</div><div class="cs-bar"><div class="cs-fill cpu ${barCls(cpu)}" data-field="cpu-bar" style="width:${Math.min(cpu,100)}%"></div></div></div>
@@ -910,6 +972,10 @@ function renderGrid(items) {
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
           Logs
         </button>
+        ${isRun ? `<button class="ca term" onclick="openTerminal('${c.fullId}','${esc(c.name)}')">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+          Term
+        </button>` : ''}
         ${actionsMenu(c)}
       </div>
     </div>`;
@@ -957,7 +1023,7 @@ function renderList(items) {
           <div class="list-cname" title="${esc(c.name)}">${esc(c.name)}</div>
         </div>
         <div class="list-image" title="${esc(c.image)}">${esc(c.image)}</div>
-        <div><div class="sbadge ${sc}" data-field="badge"><div class="sdot"></div>${sLabel(c)}</div>${updates[c.name] && updates[c.name].status === 'update' ? ` <span class="ubadge" title="A newer image is available on Docker Hub">↑</span>` : ''}</div>
+        <div><div class="sbadge ${sc}" data-field="badge"><div class="sdot"></div>${sLabel(c)}</div>${updates[c.name] && updates[c.name].status === 'update' ? ` <span class="ubadge" title="A newer image is available — click to update" onclick="event.stopPropagation();openUpdateConfirm('${c.fullId}','${esc(c.name)}')">↑</span>` : ''}</div>
         <div class="list-stat" data-field="cpu-val">${cpu}</div>
         <div class="list-stat" data-field="mem-val">${mem}</div>
         <div class="list-actions">
@@ -966,6 +1032,10 @@ function renderList(items) {
             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
             Logs
           </button>
+          ${isRun ? `<button class="la term" onclick="openTerminal('${c.fullId}','${esc(c.name)}')">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+            Term
+          </button>` : ''}
           ${actionsMenu(c)}
         </div>
       </div>`;
@@ -1059,7 +1129,163 @@ document.getElementById('tailSel').addEventListener('change', fetchLogs);
 document.getElementById('reloadLogs').addEventListener('click', fetchLogs);
 document.getElementById('closeModal').addEventListener('click', () => document.getElementById('overlay').classList.remove('open'));
 document.getElementById('overlay').addEventListener('click', e => { if (e.target === document.getElementById('overlay')) document.getElementById('overlay').classList.remove('open'); });
-document.addEventListener('keydown', e => { if (e.key === 'Escape') document.getElementById('overlay').classList.remove('open'); });
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  document.getElementById('overlay').classList.remove('open');
+  if (document.getElementById('termOverlay').classList.contains('open')) closeTerminal();
+  closeUpdateModal();
+});
+
+/* TERMINAL */
+let termWs = null;
+let term = null;
+let fitAddon = null;
+let termResizeObserver = null;
+
+// base64 <-> raw bytes, not base64 <-> JS-string — the exec stream is
+// arbitrary bytes (control sequences, UTF-8, etc.), and btoa()/atob() only
+// handle Latin1, so we go through Uint8Array explicitly in both directions.
+function bytesToB64(bytes) {
+  let bin = '';
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin);
+}
+function b64ToBytes(b64) {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+
+function closeTerminal() {
+  document.getElementById('termOverlay').classList.remove('open');
+  if (termWs) { termWs.onclose = null; termWs.close(); termWs = null; }
+  if (termResizeObserver) { termResizeObserver.disconnect(); termResizeObserver = null; }
+  if (term) { term.dispose(); term = null; }
+  document.getElementById('termContainer').innerHTML = '';
+}
+
+function openTerminal(id, name) {
+  document.getElementById('termName').textContent = name;
+  document.getElementById('termId').textContent = id.slice(0, 12);
+  document.getElementById('termOverlay').classList.add('open');
+  const statusEl = document.getElementById('termStatus');
+  statusEl.textContent = 'Connecting…';
+  statusEl.className = 'term-status';
+
+  term = new Terminal({
+    fontFamily: 'JetBrains Mono, monospace',
+    fontSize: 13,
+    theme: { background: '#0a0c10' },
+    cursorBlink: true,
+  });
+  fitAddon = new FitAddon.FitAddon();
+  term.loadAddon(fitAddon);
+  term.open(document.getElementById('termContainer'));
+  fitAddon.fit();
+
+  const sendResize = () => {
+    if (termWs && termWs.readyState === WebSocket.OPEN) {
+      termWs.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
+    }
+  };
+
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  termWs = new WebSocket(`${proto}://${location.host}/ws/exec/${id}`);
+  termWs.onopen = () => { statusEl.textContent = 'Connected'; sendResize(); };
+  termWs.onmessage = (ev) => {
+    const msg = JSON.parse(ev.data);
+    if (msg.type === 'data') term.write(b64ToBytes(msg.data));
+    else if (msg.type === 'error') { statusEl.textContent = msg.message; statusEl.className = 'term-status err'; }
+  };
+  termWs.onclose = () => { statusEl.textContent = 'Disconnected'; };
+  termWs.onerror = () => { statusEl.className = 'term-status err'; statusEl.textContent = 'Connection error'; };
+
+  term.onData((data) => {
+    if (termWs && termWs.readyState === WebSocket.OPEN) {
+      termWs.send(JSON.stringify({ type: 'data', data: bytesToB64(new TextEncoder().encode(data)) }));
+    }
+  });
+
+  termResizeObserver = new ResizeObserver(() => { fitAddon.fit(); sendResize(); });
+  termResizeObserver.observe(document.getElementById('termContainer'));
+}
+
+document.getElementById('closeTerm').addEventListener('click', closeTerminal);
+document.getElementById('termOverlay').addEventListener('click', e => { if (e.target === document.getElementById('termOverlay')) closeTerminal(); });
+
+/* IMAGE UPDATE (risk-classified pull + recreate) */
+let updateTarget = null; // { id, name, risky }
+
+function closeUpdateModal() {
+  document.getElementById('updateOverlay').classList.remove('open');
+  updateTarget = null;
+}
+
+async function openUpdateConfirm(id, name) {
+  document.getElementById('updName').textContent = name;
+  document.getElementById('updId').textContent = id.slice(0, 12);
+  const body = document.getElementById('updateBody');
+  const confirmBtn = document.getElementById('updateConfirmBtn');
+  body.innerHTML = 'Checking…';
+  confirmBtn.disabled = true;
+  confirmBtn.classList.remove('risky');
+  confirmBtn.textContent = 'Update now';
+  document.getElementById('updateOverlay').classList.add('open');
+
+  let risk;
+  try {
+    risk = await get(`/api/containers/${id}/update-risk`);
+  } catch {
+    body.innerHTML = 'Could not check update risk.';
+    return;
+  }
+  updateTarget = { id, name, risky: risk.risky };
+
+  if (!risk.risky) {
+    body.innerHTML = `This will pull the new image and recreate <b>${esc(name)}</b> with its current configuration (ports, volumes, env). The container restarts briefly.`;
+    confirmBtn.disabled = false;
+  } else {
+    body.innerHTML = `
+      <p>Updating <b>${esc(name)}</b> carries some risk:</p>
+      <ul class="confirm-reasons">${risk.reasons.map(r => `<li>${esc(r)}</li>`).join('')}</ul>
+      <label class="confirm-check">
+        <input type="checkbox" id="riskAck"/>
+        <span>I understand the risk, update anyway</span>
+      </label>`;
+    confirmBtn.classList.add('risky');
+    confirmBtn.textContent = 'Update anyway';
+    confirmBtn.disabled = true;
+    document.getElementById('riskAck').addEventListener('change', e => { confirmBtn.disabled = !e.target.checked; });
+  }
+}
+
+document.getElementById('updateConfirmBtn').addEventListener('click', async () => {
+  if (!updateTarget) return;
+  const { id, name, risky } = updateTarget;
+  const btn = document.getElementById('updateConfirmBtn');
+  btn.disabled = true;
+  btn.textContent = 'Updating…';
+  try {
+    const r = await fetch(`/api/containers/${id}/update`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ confirm: risky }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'Update failed');
+    toast(`${name} updated`);
+    closeUpdateModal();
+    setTimeout(loadAll, 900);
+  } catch (e) {
+    toast(e.message, 'err');
+    btn.disabled = false;
+    btn.textContent = risky ? 'Update anyway' : 'Update now';
+  }
+});
+document.getElementById('updateCancelBtn').addEventListener('click', closeUpdateModal);
+document.getElementById('closeUpdate').addEventListener('click', closeUpdateModal);
+document.getElementById('updateOverlay').addEventListener('click', e => { if (e.target === document.getElementById('updateOverlay')) closeUpdateModal(); });
 
 /* DRAG & DROP REORDER */
 let dragName = null;
