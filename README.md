@@ -4,6 +4,8 @@
 [![GHCR](https://img.shields.io/badge/ghcr.io-servedash-blue?logo=github)](https://github.com/DestinyJazz/servedash/pkgs/container/servedash)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://github.com/DestinyJazz/servedash/blob/main/LICENSE)
 
+<a href="https://www.buymeacoffee.com/djlch" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me a Coffee" style="height: 60px !important;width: 217px !important;" ></a>
+
 A simple Docker dashboard I built because Portainer felt too heavy for just wanting to see what's running. A lightweight alternative when you want visibility, not a full management suite.
 
 Auto-discovers all your containers, shows CPU/RAM, lets you tail logs, and opens each service — without leaving the page.
@@ -68,7 +70,7 @@ Servedash can check whether a newer image is available for your containers. When
 
 Clicking the "Update" badge pulls the new image and recreates the container with its current configuration (ports, volumes, env, networks). Before touching anything, Servedash classifies the update:
 
-- **Safe** (not managed by docker-compose or a Portainer stack, no custom network setup, no legacy container linking) — one click, no extra confirmation.
+- **Safe** (not managed by docker-compose or a Portainer stack, no custom network setup, no legacy container linking). One click, no extra confirmation.
 ![Servedash](assets/update-safe.png)
 - **Risky** (compose-managed, Portainer-managed, or has custom networking) — Servedash explains why and requires you to check "I understand the risk, update anyway" before proceeding. Recreating a compose- or Portainer-managed container here can drift from your compose file / stack; the next `docker compose up -d` or Portainer redeploy may not behave as expected.
 ![Servedash](assets/update-warning.png)
@@ -116,6 +118,8 @@ Servedash mounts the Docker socket read-write — it needs this for the built-in
 [![GHCR](https://img.shields.io/badge/ghcr.io-servedash-blue?logo=github)](https://github.com/DestinyJazz/servedash/pkgs/container/servedash)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://github.com/DestinyJazz/servedash/blob/main/LICENSE)
 
+<a href="https://www.buymeacoffee.com/djlch" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me a Coffee" style="height: 60px !important;width: 217px !important;" ></a>
+
 自己搭的 Docker dashboard，因为觉得 Portainer 对于「只是想看看哪些服务在跑」来说太重了。一个轻量替代方案，适合只想看状态、不需要完整管理套件的场景。
 
 自动扫描所有 container，显示 CPU/RAM，可以查 logs，一键打开各个服务 — 不需要切换页面。
@@ -134,9 +138,9 @@ Servedash mounts the Docker socket read-write — it needs this for the built-in
 - 状态筛选（Running、Stopped、Paused、Unhealthy），带实时计数
 - 检测不健康容器（在运行但健康检查失败）
 - 拖拽卡片排序，或按名称、运行时间、有无更新排序
-- 镜像更新检测 — 有新版镜像时在卡片上标记（Docker Hub、GHCR、lscr.io），支持一键 pull + 重建（见「镜像更新」）
+- 镜像更新检测：有新版镜像时在卡片上标记（Docker Hub、GHCR、lscr.io），支持一键 pull + 重建（见「镜像更新」）
 ![Servedash](assets/update.png)
-- 内置网页终端 — 直接在浏览器里打开任意运行中容器的交互式 shell，不需要 SSH
+- 内置网页终端：直接在浏览器里打开任意运行中容器的交互式 shell，不需要 SSH
 ![Servedash](assets/terminal.png)
 - 支持 Grid 和 List 两种视图
 - 深色 / 浅色主题切换
@@ -180,7 +184,7 @@ Servedash 可以检查容器是否有新版镜像。有的话，卡片上会显�
 
 点击「Update」标记会 pull 新镜像，并用当前容器的配置（端口、volume、环境变量、网络）重建容器。在改动任何东西之前，Servedash 会先做风险分类：
 
-- **安全**（不是 docker-compose 或 Portainer stack 管理的、没有自定义网络配置、没有用旧式容器 link）— 一键完成，不需要额外确认。
+- **安全**（不是 docker-compose 或 Portainer stack 管理的、没有自定义网络配置、没有用旧式容器 link）。一键完成，不需要额外确认。
 ![Servedash](assets/update-safe.png)
 - **有风险**（compose 管理、Portainer 管理，或有自定义网络配置）— Servedash 会说明具体原因，需要你勾选「我理解风险，仍然更新」才会继续。在这里重建一个 compose/Portainer 管理的容器，可能会让它跟你的 compose 文件或 stack 状态不一致，下次 `docker compose up -d` 或 Portainer redeploy 时行为可能对不上。
 ![Servedash](assets/update-warning.png)
