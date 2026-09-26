@@ -363,6 +363,9 @@ button{cursor:pointer;border:none;background:none;font-family:inherit;color:inhe
 .confirm-body{padding:18px;font-size:.83rem;line-height:1.6}
 .confirm-reasons{list-style:none;margin:10px 0 0;padding:0;display:flex;flex-direction:column;gap:8px}
 .confirm-reasons li{background:var(--yellow-bg);border:1px solid rgba(245,158,11,.3);border-radius:8px;padding:9px 11px;font-size:.78rem;color:var(--text)}
+.confirm-body p+p,.confirm-body pre+p{margin-top:10px}
+.confirm-body code{font-family:var(--mono);font-size:.76rem}
+.confirm-cmd{margin-top:8px;padding:9px 11px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;font-family:var(--mono);font-size:.74rem;white-space:pre-wrap;word-break:break-all;user-select:all}
 .confirm-check{display:flex;align-items:flex-start;gap:8px;margin-top:14px;font-size:.78rem;color:var(--text2);cursor:pointer}
 .confirm-check input{margin-top:2px}
 .confirm-actions{display:flex;justify-content:flex-end;gap:8px;padding:14px 18px;border-top:1px solid var(--border)}
@@ -789,8 +792,9 @@ function buildUrl(c) {
 }
 
 // All public ports for a container
+// Ports the Open button can offer: published TCP only (a browser can't open UDP).
 function publicPorts(c) {
-  return (c.ports || []).filter(p => p.PublicPort);
+  return (c.ports || []).filter(p => p.PublicPort && p.Type !== 'udp');
 }
 
 // Build URL from a specific port entry
@@ -906,6 +910,18 @@ function updateCounts() {
 }
 
 /* RENDER */
+// "↑ Update" badge (grid) or compact "↑" (list). Pinned version tags such as
+// 1.2.1 report latestVersion instead — show that version, since clicking
+// only explains how to move to it (see openUpdateConfirm).
+function updateBadge(c, compact) {
+  const u = updates[c.name];
+  if (!u || u.status !== 'update') return '';
+  const title = u.latestVersion ? `Version ${u.latestVersion} is available — click for details` : 'A newer image is available — click to update';
+  const label = compact ? '↑' : u.latestVersion ? `↑ ${esc(u.latestVersion)}` : '↑ Update';
+  const tag = compact ? 'span' : 'div';
+  return `${compact ? ' ' : ''}<${tag} class="ubadge" title="${esc(title)}" onclick="event.stopPropagation();openUpdateConfirm('${c.fullId}','${esc(c.name)}')">${label}</${tag}>`;
+}
+
 function render() {
   const wrap = document.getElementById('container');
   const items = ordered(filtered());
@@ -930,8 +946,11 @@ function renderGrid(items) {
     const ports = (c.ports||[]).filter(p=>p.PublicPort).slice(0,4);
     const isRun = c.status === 'running';
 
-    // Build open button — dropdown if multiple ports, normal if single/label
-    const openBtn = multiPort
+    // Build open button — dropdown if multiple ports, normal if single/label.
+    // Not running -> a plain disabled button: a stopped service won't answer,
+    // and the dropdown wrapper would still open on click (disabled buttons
+    // have pointer-events:none, so the click falls through to the wrapper).
+    const openBtn = multiPort && isRun
       ? `<div class="port-menu-wrap" id="pmw-${c.id}" onclick="event.stopPropagation();togglePortMenu(this)">
           <button class="ca open">
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
@@ -946,7 +965,7 @@ function renderGrid(items) {
               </div>`).join('')}
           </div>
         </div>`
-      : `<button class="ca open" onclick="openURL('${url}')" ${url?'':'disabled'} title="${url||'No URL'}">
+      : `<button class="ca open" onclick="openURL('${url}')" ${url && isRun ? '' : 'disabled'} title="${isRun ? (url||'No URL') : 'Container not running'}">
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
           Open
         </button>`;
@@ -959,13 +978,13 @@ function renderGrid(items) {
           <div class="cimage" title="${esc(c.image)}">${esc(c.image)}</div>
         </div>
         <div class="sbadge ${sc}" data-field="badge"><div class="sdot"></div>${sLabel(c)}</div>
-        ${updates[c.name] && updates[c.name].status === 'update' ? `<div class="ubadge" title="A newer image is available — click to update" onclick="event.stopPropagation();openUpdateConfirm('${c.fullId}','${esc(c.name)}')">↑ Update</div>` : ''}
+        ${updateBadge(c)}
       </div>
       ${hs ? `<div class="cstats">
         <div class="cs"><div class="cs-label">CPU</div><div class="cs-val" data-field="cpu-val">${cpu}%</div><div class="cs-bar"><div class="cs-fill cpu ${barCls(cpu)}" data-field="cpu-bar" style="width:${Math.min(cpu,100)}%"></div></div></div>
         <div class="cs"><div class="cs-label">Memory</div><div class="cs-val" data-field="mem-val">${hs ? c.stats.memUsage : 0} MB</div><div class="cs-bar"><div class="cs-fill mem ${barCls(mem)}" data-field="mem-bar" style="width:${Math.min(mem,100)}%"></div></div></div>
       </div>` : ''}
-      ${ports.length ? `<div class="cports">${ports.map(p=>`<span class="ptag">${p.PublicPort}→${p.PrivatePort}</span>`).join('')}</div>` : ''}
+      ${ports.length ? `<div class="cports">${ports.map(p=>`<span class="ptag">${p.PublicPort}→${p.PrivatePort}${p.Type === 'udp' ? '/udp' : ''}</span>`).join('')}</div>` : ''}
       <div class="cactions">
         ${openBtn}
         <button class="ca logs" onclick="openLogs('${c.fullId}','${esc(c.name)}')">
@@ -997,7 +1016,8 @@ function renderList(items) {
       const multiPort = !c.url && pubPorts.length > 1;
       const isRun = c.status === 'running';
 
-      const listOpenBtn = multiPort
+      // Same rule as the grid: dropdown only when running, else disabled button.
+      const listOpenBtn = multiPort && isRun
         ? `<div class="port-menu-wrap" id="lpmw-${c.id}" onclick="event.stopPropagation();togglePortMenu(this)" style="position:relative">
             <button class="la open">
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
@@ -1011,7 +1031,7 @@ function renderList(items) {
                 </div>`).join('')}
             </div>
           </div>`
-        : `<button class="la open" onclick="openURL('${url}')" ${url?'':'disabled'}>
+        : `<button class="la open" onclick="openURL('${url}')" ${url && isRun ? '' : 'disabled'}>
             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
             Open
           </button>`;
@@ -1023,7 +1043,7 @@ function renderList(items) {
           <div class="list-cname" title="${esc(c.name)}">${esc(c.name)}</div>
         </div>
         <div class="list-image" title="${esc(c.image)}">${esc(c.image)}</div>
-        <div><div class="sbadge ${sc}" data-field="badge"><div class="sdot"></div>${sLabel(c)}</div>${updates[c.name] && updates[c.name].status === 'update' ? ` <span class="ubadge" title="A newer image is available — click to update" onclick="event.stopPropagation();openUpdateConfirm('${c.fullId}','${esc(c.name)}')">↑</span>` : ''}</div>
+        <div><div class="sbadge ${sc}" data-field="badge"><div class="sdot"></div>${sLabel(c)}</div>${updateBadge(c, true)}</div>
         <div class="list-stat" data-field="cpu-val">${cpu}</div>
         <div class="list-stat" data-field="mem-val">${mem}</div>
         <div class="list-actions">
@@ -1192,14 +1212,22 @@ function openTerminal(id, name) {
 
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   termWs = new WebSocket(`${proto}://${location.host}/ws/exec/${id}`);
+  // The server sends an error frame and then closes the socket, so onclose
+  // must not overwrite the error with a generic "Disconnected".
+  let failed = false;
   termWs.onopen = () => { statusEl.textContent = 'Connected'; sendResize(); };
   termWs.onmessage = (ev) => {
     const msg = JSON.parse(ev.data);
     if (msg.type === 'data') term.write(b64ToBytes(msg.data));
-    else if (msg.type === 'error') { statusEl.textContent = msg.message; statusEl.className = 'term-status err'; }
+    else if (msg.type === 'error') {
+      failed = true;
+      statusEl.textContent = msg.message;
+      statusEl.className = 'term-status err';
+      term.write(`\x1b[31m${msg.message}\x1b[0m\r\n`);
+    }
   };
-  termWs.onclose = () => { statusEl.textContent = 'Disconnected'; };
-  termWs.onerror = () => { statusEl.className = 'term-status err'; statusEl.textContent = 'Connection error'; };
+  termWs.onclose = () => { if (!failed) statusEl.textContent = 'Disconnected'; };
+  termWs.onerror = () => { failed = true; statusEl.className = 'term-status err'; statusEl.textContent = 'Connection error'; };
 
   term.onData((data) => {
     if (termWs && termWs.readyState === WebSocket.OPEN) {
@@ -1222,13 +1250,46 @@ function closeUpdateModal() {
   updateTarget = null;
 }
 
+// "repo:1.2.1" -> "repo:1.3.0"
+function withTag(image, tag) { return image.replace(/:[^:/]+$/, '') + ':' + tag; }
+
+// Why Servedash can't one-click update itself, plus what to run instead.
+function selfUpdateHelp(s, latestVersion) {
+  const target = latestVersion ? withTag(s.image, latestVersion) : s.image;
+  const cd = s.composeDir ? `cd "${s.composeDir}" && ` : '';
+  const svc = s.composeService ? ' ' + s.composeService : '';
+  let how;
+  if (s.portainer) {
+    how = latestVersion
+      ? `<p>In Portainer, change the stack's image to <code>${esc(target)}</code> and redeploy it.</p>`
+      : `<p>In Portainer, open the stack and redeploy it with <b>Re-pull image</b> enabled.</p>`;
+  } else if (s.composeService) {
+    how = latestVersion
+      ? `<p>Change the image in your docker-compose.yml to <code>${esc(target)}</code>, then run on the host:</p><pre class="confirm-cmd">${esc(`${cd}docker compose up -d${svc}`)}</pre>`
+      : `<p>Run this on the host instead:</p><pre class="confirm-cmd">${esc(`${cd}docker compose pull${svc} && docker compose up -d${svc}`)}</pre>`;
+  } else {
+    how = `<p>Pull the new image on the host, then remove this container and start it again with the same <code>docker run</code> options:</p><pre class="confirm-cmd">${esc(`docker pull ${target}`)}</pre>`;
+  }
+  return `<p><b>Servedash can't update its own container.</b> Updating means stopping the old container and starting a new one — but Servedash runs inside the container it would have to stop, so it would shut itself down halfway and never start the new one. Other containers aren't affected and still update in one click.</p>${how}`;
+}
+
+// Pinned version tag (e.g. 1.2.1): pulling the same tag again changes nothing,
+// and jumping versions automatically could cross a breaking major upgrade.
+function pinnedUpdateHelp(c, latestVersion) {
+  return `<p><b>${esc(c.name)}</b> is pinned to a specific version, and <b>${esc(latestVersion)}</b> is available.</p>
+    <p>Servedash doesn't change pinned versions for you — a newer version can include breaking changes (a database major upgrade, for example). To update, change the image in your compose file or <code>docker run</code> command to <code>${esc(withTag(c.image, latestVersion))}</code> and recreate the container.</p>`;
+}
+
 async function openUpdateConfirm(id, name) {
   document.getElementById('updName').textContent = name;
   document.getElementById('updId').textContent = id.slice(0, 12);
   const body = document.getElementById('updateBody');
   const confirmBtn = document.getElementById('updateConfirmBtn');
+  const cancelBtn = document.getElementById('updateCancelBtn');
   body.innerHTML = 'Checking…';
   confirmBtn.disabled = true;
+  confirmBtn.style.display = '';
+  cancelBtn.textContent = 'Cancel';
   confirmBtn.classList.remove('risky');
   confirmBtn.textContent = 'Update now';
   document.getElementById('updateOverlay').classList.add('open');
@@ -1240,6 +1301,20 @@ async function openUpdateConfirm(id, name) {
     body.innerHTML = 'Could not check update risk.';
     return;
   }
+
+  // Servedash itself, or a pinned version tag: nothing to do in one click,
+  // so explain what to do instead and offer only "Close".
+  const u = updates[name] || {};
+  const c = containers.find(x => x.fullId === id);
+  const info = risk.self ? selfUpdateHelp(risk.self, u.latestVersion)
+    : u.latestVersion && c ? pinnedUpdateHelp(c, u.latestVersion) : null;
+  if (info) {
+    body.innerHTML = info;
+    confirmBtn.style.display = 'none';
+    cancelBtn.textContent = 'Close';
+    return;
+  }
+
   updateTarget = { id, name, risky: risk.risky };
 
   if (!risk.risky) {
@@ -1433,10 +1508,15 @@ async function loadConfig() {
 function reflectSelfUpdate() {
   const vt = document.getElementById('versionTag');
   if (!vt) return;
-  const self = containers.find(c => /\/servedash(:|$)/.test(c.image) || c.image.includes('servedash'));
-  const hasUpdate = self && updates[self.name] && updates[self.name].status === 'update';
+  // The backend flags its own container; the image-name match is a fallback
+  // for setups where it can't tell (e.g. a custom hostname and no procfs).
+  const self = containers.find(c => c.self) || containers.find(c => c.image.includes('servedash'));
+  const u = self && updates[self.name];
+  const hasUpdate = u && u.status === 'update';
   vt.classList.toggle('has-update', !!hasUpdate);
-  vt.title = hasUpdate ? 'A new Servedash version is available — click for release notes' : 'View release notes';
+  vt.title = hasUpdate
+    ? `A new Servedash version${u.latestVersion ? ` (${u.latestVersion})` : ''} is available — click for release notes`
+    : 'View release notes';
 }
 
 /* REFRESH */

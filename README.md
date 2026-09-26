@@ -6,9 +6,9 @@
 
 <a href="https://www.buymeacoffee.com/djlch" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me a Coffee" style="height: 60px !important;width: 217px !important;" ></a>
 
-A simple Docker dashboard I built because Portainer felt too heavy for just wanting to see what's running. A lightweight alternative when you want visibility, not a full management suite.
+I built this because Portainer felt like too much when all I wanted was to see what's running. It's a small dashboard for checking on your containers, without a full management suite.
 
-Auto-discovers all your containers, shows CPU/RAM, lets you tail logs, and opens each service — without leaving the page.
+It finds all your containers, shows CPU and RAM usage, lets you read the logs, and opens each service, all from one page.
 
 ![Servedash](assets/screenshot.png)
 
@@ -19,14 +19,14 @@ Auto-discovers all your containers, shows CPU/RAM, lets you tail logs, and opens
 - Live log viewer with search and filter
 ![Servedash](assets/log.png)
 - Start / Stop / Restart / Pause / Unpause from a per-container Actions menu
-- Click to open any service — picks the right port if there are multiple
+- Click to open any service. If it has more than one port, you pick one from a menu
 ![Servedash](assets/port.png)
 - Status filter (Running, Stopped, Paused, Unhealthy) with live counts
 - Detects unhealthy containers (running but failing their healthcheck)
 - Drag cards to reorder, or sort by name, uptime, or available updates
-- Image update detection — flags containers when a newer image is available (Docker Hub, GHCR, lscr.io), with a one-click pull + recreate (see [Image updates](#image-updates))
+- Image update detection: flags containers when a newer image is available (Docker Hub, GHCR, lscr.io) and can pull and recreate them in one click (see [Image updates](#image-updates))
 ![Servedash](assets/update.png)
-- Built-in web terminal — open an interactive shell inside any running container, no SSH required
+- Built-in web terminal to open a shell inside any running container, no SSH needed
 ![Servedash](assets/terminal.png)
 - Grid and list view
 - Dark / light mode
@@ -42,6 +42,8 @@ docker compose up -d
 Then open `http://your-server-ip:3000`
 
 That's it. No config file needed.
+
+Images are available for `linux/amd64` and `linux/arm64` (Raspberry Pi 4/5, ARM servers). Docker pulls the right one for your machine.
 
 ## Portainer
 
@@ -68,14 +70,19 @@ Servedash can check whether a newer image is available for your containers. When
 - Or set `UPDATE_CHECK_INTERVAL` to check automatically
 - Only public images on Docker Hub, GHCR, and lscr.io are checked. Private and other registries show as unsupported.
 
-Clicking the "Update" badge pulls the new image and recreates the container with its current configuration (ports, volumes, env, networks). Before touching anything, Servedash classifies the update:
+Clicking the "Update" badge pulls the new image and recreates the container with its current configuration (ports, volumes, env, networks). Before it changes anything, Servedash checks how risky the update is:
 
 - **Safe** (not managed by docker-compose or a Portainer stack, no custom network setup, no legacy container linking). One click, no extra confirmation.
 ![Servedash](assets/update-safe.png)
-- **Risky** (compose-managed, Portainer-managed, or has custom networking) — Servedash explains why and requires you to check "I understand the risk, update anyway" before proceeding. Recreating a compose- or Portainer-managed container here can drift from your compose file / stack; the next `docker compose up -d` or Portainer redeploy may not behave as expected.
+- **Risky** (compose-managed, Portainer-managed, or has custom networking): Servedash tells you why, and you have to tick "I understand the risk, update anyway" first. If compose or Portainer manages the container, recreating it here means it no longer matches your compose file or stack, so the next `docker compose up -d` or Portainer redeploy might not do what you expect.
 ![Servedash](assets/update-warning.png)
 
-If anything fails partway through a recreate, Servedash restores the original container rather than leaving you with neither.
+If something fails halfway through, Servedash puts the original container back.
+
+Two cases don't get a one-click update:
+
+- **Pinned versions** (e.g. `myapp:1.2.1`): Servedash looks for a higher version in the registry and shows it on the badge (`↑ 1.3.0`). It won't change a pinned version for you, because a newer version can have breaking changes. Click the badge to see which tag to switch to.
+- **Servedash itself**: an update has to stop the old container, and Servedash runs inside that container, so it would shut itself down halfway. When a new version is out, the version next to the logo turns orange. Click the badge on Servedash's card to get the command to run on the host (e.g. `docker compose pull && docker compose up -d`).
 
 ## Configuration
 
@@ -108,7 +115,7 @@ docker compose -f docker-compose.dev.yml up -d --build
 
 ## Security
 
-Servedash mounts the Docker socket read-write — it needs this for the built-in terminal (`docker exec`) and one-click image updates (pull/stop/create/remove). This is equivalent to root on the host. Don't expose it to the public internet — keep it on your local network or put it behind a reverse proxy with auth.
+Servedash mounts the Docker socket read-write. The built-in terminal (`docker exec`) and one-click image updates (pull/stop/create/remove) need it, and that access is the same as root on the host. Don't expose Servedash to the internet. Keep it on your local network, or put it behind a reverse proxy with authentication.
 
 ---
 
@@ -120,9 +127,9 @@ Servedash mounts the Docker socket read-write — it needs this for the built-in
 
 <a href="https://www.buymeacoffee.com/djlch" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me a Coffee" style="height: 60px !important;width: 217px !important;" ></a>
 
-自己搭的 Docker dashboard，因为觉得 Portainer 对于「只是想看看哪些服务在跑」来说太重了。一个轻量替代方案，适合只想看状态、不需要完整管理套件的场景。
+我只是想看看有哪些服务在跑，用 Portainer 觉得太重，所以自己做了这个。适合只想看状态、用不到完整管理功能的人。
 
-自动扫描所有 container，显示 CPU/RAM，可以查 logs，一键打开各个服务 — 不需要切换页面。
+自动扫描所有 container，显示 CPU/RAM，可以看 logs，也能直接打开各个服务，都在同一个页面里。
 
 ![Servedash](assets/screenshot.png)
 
@@ -157,6 +164,8 @@ docker compose up -d
 
 不需要任何配置文件。
 
+镜像同时提供 `linux/amd64` 和 `linux/arm64`（树莓派 4/5、ARM 服务器），Docker 会自动拉取对应架构的版本。
+
 ## Portainer 部署
 
 1. Stacks → Add stack
@@ -186,10 +195,15 @@ Servedash 可以检查容器是否有新版镜像。有的话，卡片上会显�
 
 - **安全**（不是 docker-compose 或 Portainer stack 管理的、没有自定义网络配置、没有用旧式容器 link）。一键完成，不需要额外确认。
 ![Servedash](assets/update-safe.png)
-- **有风险**（compose 管理、Portainer 管理，或有自定义网络配置）— Servedash 会说明具体原因，需要你勾选「我理解风险，仍然更新」才会继续。在这里重建一个 compose/Portainer 管理的容器，可能会让它跟你的 compose 文件或 stack 状态不一致，下次 `docker compose up -d` 或 Portainer redeploy 时行为可能对不上。
+- **有风险**（compose 管理、Portainer 管理，或有自定义网络配置）：Servedash 会说明原因，你要先勾选「我理解风险，仍然更新」才能继续。如果容器是 compose 或 Portainer 管理的，在这里重建之后，它就跟你的 compose 文件或 stack 对不上了，下次 `docker compose up -d` 或 Portainer redeploy 的结果可能跟你预想的不一样。
 ![Servedash](assets/update-warning.png)
 
-如果重建过程中途失败，Servedash 会恢复原容器，不会让你两边都没有。
+如果重建到一半失败了，Servedash 会把原来的容器恢复回来。
+
+有两种情况不能一键更新：
+
+- **固定版本号**（例如 `myapp:1.2.1`）：Servedash 会去 registry 查有没有更高的版本，并显示在标记上（`↑ 1.3.0`），但不会替你改固定的版本号，因为新版本可能有不兼容的改动。点击标记会告诉你该换成哪个 tag。
+- **Servedash 自己**：更新需要先停掉旧容器，而 Servedash 就运行在这个容器里，做到一半就会把自己停掉。有新版本时，logo 旁边的版本号会变成橙色，点击 Servedash 卡片上的标记会显示在宿主机上要执行的命令（例如 `docker compose pull && docker compose up -d`）。
 
 ## 配置项
 
@@ -222,7 +236,7 @@ docker compose -f docker-compose.dev.yml up -d --build
 
 ## 安全说明
 
-Servedash 以读写方式挂载 Docker socket —— 内置终端（`docker exec`）和一键镜像更新（pull/stop/create/remove）都需要这个权限，等同于宿主机的 root 权限。不要暴露在公网上，建议放在内网或者用带认证的反向代理保护。
+Servedash 以读写方式挂载 Docker socket。内置终端（`docker exec`）和一键镜像更新（pull/stop/create/remove）都需要这个权限，而它等同于宿主机的 root 权限。不要把 Servedash 暴露在公网上，放在内网里，或者放在带认证的反向代理后面。
 
 ## License
 

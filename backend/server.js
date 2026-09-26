@@ -3,11 +3,12 @@ const Docker = require('dockerode');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const http = require('http');
 const { WebSocketServer } = require('ws');
 
 // Servedash version — keep in sync with the git tag / GHCR image tag on release.
-const VERSION = '1.3.0';
+const VERSION = '1.3.1';
 
 const app = express();
 const docker = new Docker({ socketPath: '/var/run/docker.sock' });
@@ -109,6 +110,22 @@ async function registryToken(registry, repo) {
   return j.token || j.access_token;
 }
 
+// Strict "X.Y.Z" (optional leading "v"), e.g. "1.2.1" or "v1.2.1". Anything
+// with extra suffixes (e.g. "1.2.1-alpine", "1.2.1-rc1") is treated as a
+// non-version tag and falls back to plain digest comparison instead — those
+// suffix variants aren't safely comparable as "newer/older" by number alone.
+const SEMVER_TAG_RE = /^v?(\d+)\.(\d+)\.(\d+)$/;
+
+function parseSemver(tag) {
+  const m = SEMVER_TAG_RE.exec(tag);
+  return m ? [parseInt(m[1], 10), parseInt(m[2], 10), parseInt(m[3], 10)] : null;
+}
+
+function compareSemver(a, b) {
+  for (let i = 0; i < 3; i++) if (a[i] !== b[i]) return a[i] - b[i];
+  return 0;
+}
+
 // Fetch the remote manifest digest for a parsed image
 async function remoteDigest(parsed) {
   const cfg = REGISTRIES[parsed.registry];
@@ -130,10 +147,62 @@ async function remoteDigest(parsed) {
   return r.headers.get('docker-content-digest');
 }
 
+const TAGS_CACHE = new Map(); // "<registry>/<repo>" -> { tags, checkedAt }
+
+// Fetch the repo's tag list (best-effort — one page, large n; the registry
+// API doesn't guarantee order so we just scan everything returned).
+async function listTags(parsed) {
+  const cfg = REGISTRIES[parsed.registry];
+  const token = await registryToken(parsed.registry, parsed.repo);
+  const r = await fetch(`https://${cfg.host}/v2/${parsed.repo}/tags/list?n=1000`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!r.ok) throw new Error(`tags list ${r.status}`);
+  const j = await r.json();
+  return j.tags || [];
+}
+
+// For a pinned version tag (e.g. "1.2.1"), comparing that exact tag's
+// digest can never detect an update — once a version tag is published it
+// never changes, so local always matches remote. Instead, look at the
+// repo's full tag list for a higher version number.
+async function checkVersionUpdate(parsed) {
+  const cacheKey = `${parsed.registry}/${parsed.repo}`;
+  const cached = TAGS_CACHE.get(cacheKey);
+  const now = Date.now();
+
+  let tags;
+  if (cached && now - cached.checkedAt < UPDATE_TTL) {
+    tags = cached.tags;
+  } else {
+    tags = await listTags(parsed);
+    TAGS_CACHE.set(cacheKey, { tags, checkedAt: now });
+  }
+
+  const local = parseSemver(parsed.tag);
+  let latest = local;
+  let latestTag = parsed.tag;
+  for (const t of tags) {
+    const v = parseSemver(t);
+    if (v && compareSemver(v, latest) > 0) { latest = v; latestTag = t; }
+  }
+  return compareSemver(latest, local) > 0
+    ? { status: 'update', latestVersion: latestTag }
+    : { status: 'current' };
+}
+
 // Check a single container's image for updates. Never throws.
 async function checkImageUpdate(imageRef, localDigests) {
   const parsed = parseImage(imageRef);
   if (!parsed) return { status: 'unsupported' };
+
+  if (parseSemver(parsed.tag)) {
+    try {
+      return await checkVersionUpdate(parsed);
+    } catch (e) {
+      return { status: 'error', message: e.message };
+    }
+  }
 
   const cacheKey = `${parsed.registry}/${parsed.repo}:${parsed.tag}`;
   const cached = UPDATE_CACHE.get(cacheKey);
@@ -261,6 +330,36 @@ app.get('/api/updates', async (req, res) => {
    which the server re-validates rather than trusting.
    ────────────────────────────────────────────────────────── */
 
+// Our own container id (null when not running in a container). Servedash must
+// never recreate itself: stopping the old container kills this very process,
+// so the "create the new one" step never runs and Servedash is just gone.
+// Docker bind-mounts /etc/hostname etc. from .../containers/<id>/, which shows
+// up in mountinfo; fall back to the hostname, which defaults to the short id.
+const SELF_ID = (() => {
+  try {
+    const m = /containers\/([0-9a-f]{64})\//.exec(fs.readFileSync('/proc/self/mountinfo', 'utf8'));
+    if (m) return m[1];
+  } catch { /* not Linux, or no procfs */ }
+  return null;
+})();
+
+function isSelf(id) {
+  if (SELF_ID) return id === SELF_ID;
+  const h = os.hostname();
+  return /^[0-9a-f]{12}$/.test(h) && id.startsWith(h);
+}
+
+// What the UI needs to tell the user how to update Servedash by hand.
+function selfUpdateInfo(info) {
+  const labels = info.Config.Labels || {};
+  return {
+    image: info.Config.Image,
+    composeService: labels['com.docker.compose.service'] || null,
+    composeDir: labels['com.docker.compose.project.working_dir'] || null,
+    portainer: Object.keys(labels).some((k) => k.startsWith('io.portainer.')),
+  };
+}
+
 function classifyRisk(info) {
   const reasons = [];
   const labels = (info.Config && info.Config.Labels) || {};
@@ -288,6 +387,7 @@ function classifyRisk(info) {
 app.get('/api/containers/:id/update-risk', async (req, res) => {
   try {
     const info = await docker.getContainer(req.params.id).inspect();
+    if (isSelf(info.Id)) return res.json({ self: selfUpdateInfo(info) });
     res.json(classifyRisk(info));
   } catch (err) {
     res.status(err.statusCode === 404 ? 404 : 500).json({ error: err.message });
@@ -347,6 +447,11 @@ app.post('/api/containers/:id/update', async (req, res) => {
   } catch (err) {
     UPDATE_IN_PROGRESS.delete(id);
     return res.status(404).json({ error: 'Container not found' });
+  }
+
+  if (isSelf(old.Id)) {
+    UPDATE_IN_PROGRESS.delete(id);
+    return res.status(400).json({ error: "Servedash can't update its own container — it would stop itself halfway. Update it from the host instead." });
   }
 
   const risk = classifyRisk(old);
@@ -420,6 +525,20 @@ app.post('/api/containers/:id/update', async (req, res) => {
   }
 });
 
+// Docker lists a published port once per bound address — on IPv6-capable
+// hosts that's twice (0.0.0.0 and ::). The UI never uses the address (links
+// use the browser's hostname), so keep one entry per port and protocol,
+// sorted so the Open dropdown and port tags list ports in order.
+function dedupePorts(ports) {
+  const seen = new Set();
+  return (ports || []).filter((p) => {
+    const key = `${p.PublicPort || ''}:${p.PrivatePort}/${p.Type}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).sort((a, b) => (a.PublicPort || 0) - (b.PublicPort || 0) || a.PrivatePort - b.PrivatePort);
+}
+
 // GET all containers with stats
 app.get('/api/containers', async (req, res) => {
   try {
@@ -431,6 +550,7 @@ app.get('/api/containers', async (req, res) => {
       let port = null;
 
       const labels = c.Labels || {};
+      const ports = dedupePorts(c.Ports);
 
       // Custom URL from label, in priority order:
       // servedash.url (preferred) > dashboard.url (legacy) > homepage.href (Homepage compat)
@@ -439,9 +559,10 @@ app.get('/api/containers', async (req, res) => {
         || labels['homepage.href']
         || null;
 
-      // Otherwise grab the public port — frontend will build the URL
-      if (!url && c.Ports && c.Ports.length > 0) {
-        const pub = c.Ports.find(p => p.PublicPort);
+      // Otherwise grab a public TCP port — frontend will build the URL
+      // (a browser can't open a UDP port, e.g. DNS on 53/udp)
+      if (!url) {
+        const pub = ports.find(p => p.PublicPort && p.Type !== 'udp');
         if (pub) port = pub.PublicPort;
       }
 
@@ -487,9 +608,10 @@ app.get('/api/containers', async (req, res) => {
         health,
         url,
         port,
-        ports: c.Ports,
+        ports,
         stats,
         created: c.Created,
+        self: isSelf(c.Id),
       };
     }));
 
@@ -572,9 +694,14 @@ app.get('*', (req, res) => {
 
 // Find a shell that actually exists in the container. Runs a throwaway
 // non-interactive exec rather than assuming bash is present.
+//
+// Only a bare absolute path counts as a result. On scratch/distroless images
+// (dozzle, portainer, ...) `sh` itself is missing, and Docker doesn't fail the
+// exec call — it writes its own "executable file not found" error into the
+// output stream instead, which must not be mistaken for a shell path.
 async function detectShell(container) {
   const probe = await container.exec({
-    Cmd: ['sh', '-c', 'command -v bash || command -v sh || echo NONE'],
+    Cmd: ['sh', '-c', 'command -v bash || command -v sh'],
     AttachStdout: true,
     AttachStderr: true,
   });
@@ -586,7 +713,7 @@ async function detectShell(container) {
     stream.on('error', reject);
   });
   const out = Buffer.concat(chunks).toString('utf8').trim().split('\n').pop().trim();
-  return out === 'NONE' || !out ? null : out;
+  return /^\/\S+$/.test(out) ? out : null;
 }
 
 function wsSend(ws, msg) {
@@ -617,7 +744,7 @@ async function handleExecSocket(ws, containerId) {
     return ws.close(1011);
   }
   if (!shell) {
-    wsSend(ws, { type: 'error', message: 'No shell (bash or sh) found in this container' });
+    wsSend(ws, { type: 'error', message: "No shell available — this image doesn't include bash or sh (common for minimal images like dozzle or portainer)" });
     return ws.close(1008);
   }
 
