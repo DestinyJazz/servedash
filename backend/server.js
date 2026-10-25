@@ -8,7 +8,7 @@ const http = require('http');
 const { WebSocketServer } = require('ws');
 
 // Servedash version — keep in sync with the git tag / GHCR image tag on release.
-const VERSION = '1.3.1';
+const VERSION = '1.3.2';
 
 const app = express();
 const docker = new Docker({ socketPath: '/var/run/docker.sock' });
