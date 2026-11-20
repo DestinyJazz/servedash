@@ -62,6 +62,8 @@ labels:
 
 Servedash also reads `homepage.href` if you already use it, so existing Homepage labels work without changes. The older `dashboard.url` label is still supported too.
 
+The value has to be a full `http://` or `https://` URL. Anything else is ignored and Servedash falls back to the published port.
+
 ## Image updates
 
 Servedash can check whether a newer image is available for your containers. When one is, the card shows an "Update" badge.
@@ -116,6 +118,8 @@ docker compose -f docker-compose.dev.yml up -d --build
 ## Security
 
 Servedash mounts the Docker socket read-write. The built-in terminal (`docker exec`) and one-click image updates (pull/stop/create/remove) need it, and that access is the same as root on the host. Don't expose Servedash to the internet. Keep it on your local network, or put it behind a reverse proxy with authentication.
+
+Since 1.3.3, Servedash only accepts actions and terminal connections from its own page. A website open in another tab can't stop your containers or open a shell through Servedash. Labels are treated as untrusted too, because an image can set them in its Dockerfile, so a label can't put scripts into the page.
 
 ---
 
@@ -183,6 +187,8 @@ labels:
 
 如果你已经在用 `homepage.href`，Servedash 也会读取，现有的 Homepage label 不用改动就能用。旧的 `dashboard.url` label 同样仍然支持。
 
+值必须是完整的 `http://` 或 `https://` 网址。其他格式会被忽略，Servedash 会改用发布的端口。
+
 ## 镜像更新
 
 Servedash 可以检查容器是否有新版镜像。有的话，卡片上会显示「Update」标记。
@@ -237,6 +243,8 @@ docker compose -f docker-compose.dev.yml up -d --build
 ## 安全说明
 
 Servedash 以读写方式挂载 Docker socket。内置终端（`docker exec`）和一键镜像更新（pull/stop/create/remove）都需要这个权限，而它等同于宿主机的 root 权限。不要把 Servedash 暴露在公网上，放在内网里，或者放在带认证的反向代理后面。
+
+从 1.3.3 起，Servedash 只接受来自它自己页面的操作和终端连接。在其他分页打开的网站，没办法通过 Servedash 停掉你的容器或打开 shell。label 也一律视为不可信，因为镜像可以在 Dockerfile 里设置 label，所以 label 没办法把脚本放进页面。
 
 ## License
 

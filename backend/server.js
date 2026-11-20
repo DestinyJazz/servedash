@@ -1,6 +1,5 @@
 const express = require('express');
 const Docker = require('dockerode');
-const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -8,7 +7,7 @@ const http = require('http');
 const { WebSocketServer } = require('ws');
 
 // Servedash version — keep in sync with the git tag / GHCR image tag on release.
-const VERSION = '1.3.2';
+const VERSION = '1.3.3';
 
 const app = express();
 const docker = new Docker({ socketPath: '/var/run/docker.sock' });
@@ -232,7 +231,74 @@ async function checkImageUpdate(imageRef, localDigests) {
   return { status: upToDate ? 'current' : 'update', remoteDigest: remote };
 }
 
-app.use(cors());
+/* ──────────────────────────────────────────────────────────
+   REQUEST ORIGIN CHECK
+   Servedash has no login, and its API can stop containers and
+   open a root shell. "Keep it on a trusted network" isn't enough
+   on its own: a web page from any other site, opened in a browser
+   on that network, can send requests to it. So anything that
+   changes state (POST, and the terminal WebSocket) must come from
+   Servedash's own page.
+
+   Browsers always label where a request comes from, and a page on
+   another site can't fake these headers:
+   - Sec-Fetch-Site: "same-origin" for Servedash's own page. Sent by
+     all current browsers, and correct behind a reverse proxy too.
+   - Origin: fallback for older browsers; compared with the Host the
+     request was sent to (or X-Forwarded-Host from a proxy).
+   Requests with neither header don't come from a browser (curl,
+   scripts). They could reach the API anyway, so they're allowed.
+   ────────────────────────────────────────────────────────── */
+function isSameOrigin(req) {
+  const site = req.headers['sec-fetch-site'];
+  if (site) return site === 'same-origin';
+
+  const origin = req.headers.origin;
+  if (!origin) return true;
+  let originHost;
+  try { originHost = new URL(origin).host; } catch { return false; }
+  const hosts = [req.headers.host, req.headers['x-forwarded-host']]
+    .filter(Boolean)
+    .flatMap((h) => String(h).split(',').map((s) => s.trim().toLowerCase()));
+  return hosts.includes(originHost.toLowerCase());
+}
+
+// Security headers on every response.
+// - CSP: scripts only from Servedash itself, so injected inline script or
+//   inline event handlers (onclick=, onmouseover=) won't run even if some
+//   escaping is ever missed. Inline styles stay allowed: the UI sets widths
+//   with style="", which can't run code.
+// - frame-ancestors / X-Frame-Options: no other site can load Servedash in
+//   a hidden frame and trick a click on Stop.
+const HOST_RE = /^[A-Za-z0-9.\-:[\]]+$/;
+app.use((req, res, next) => {
+  const host = HOST_RE.test(req.headers.host || '') ? req.headers.host : null;
+  // 'self' covers ws(s): in current browsers; the explicit entries help older Safari.
+  const connect = ["'self'"].concat(host ? [`ws://${host}`, `wss://${host}`] : []).join(' ');
+  res.setHeader('Content-Security-Policy', [
+    "default-src 'self'",
+    "script-src 'self'",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src 'self' https://fonts.gstatic.com",
+    "img-src 'self' data:",
+    `connect-src ${connect}`,
+    "object-src 'none'",
+    "base-uri 'none'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+  ].join('; '));
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  next();
+});
+
+// Reject state-changing requests from other sites (see isSameOrigin above).
+app.use((req, res, next) => {
+  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method) || isSameOrigin(req)) return next();
+  res.status(403).json({ error: 'Cross-site request blocked' });
+});
+
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '../frontend/public')));
 
@@ -539,6 +605,17 @@ function dedupePorts(ports) {
   }).sort((a, b) => (a.PublicPort || 0) - (b.PublicPort || 0) || a.PrivatePort - b.PrivatePort);
 }
 
+// A label URL is used only if it parses as an absolute http(s) URL. Anything
+// else (javascript:, data:, text with quotes meant to break out of HTML) is
+// dropped, and the container falls back to its published port.
+function safeLabelUrl(v) {
+  if (!v) return null;
+  try {
+    const u = new URL(v);
+    return u.protocol === 'http:' || u.protocol === 'https:' ? u.href : null;
+  } catch { return null; }
+}
+
 // GET all containers with stats
 app.get('/api/containers', async (req, res) => {
   try {
@@ -554,9 +631,11 @@ app.get('/api/containers', async (req, res) => {
 
       // Custom URL from label, in priority order:
       // servedash.url (preferred) > dashboard.url (legacy) > homepage.href (Homepage compat)
-      url = labels['servedash.url']
-        || labels['dashboard.url']
-        || labels['homepage.href']
+      // Labels are untrusted: an image's Dockerfile LABEL is inherited by the
+      // container, so only well-formed http(s) URLs get through.
+      url = safeLabelUrl(labels['servedash.url'])
+        || safeLabelUrl(labels['dashboard.url'])
+        || safeLabelUrl(labels['homepage.href'])
         || null;
 
       // Otherwise grab a public TCP port — frontend will build the URL
@@ -642,7 +721,8 @@ app.get('/api/info', async (req, res) => {
 app.get('/api/containers/:id/logs', async (req, res) => {
   try {
     const container = docker.getContainer(req.params.id);
-    const tail = parseInt(req.query.tail) || 200;
+    // Capped: an unbounded tail would load a container's whole log into memory.
+    const tail = Math.min(Math.max(parseInt(req.query.tail, 10) || 200, 1), 5000);
     const logs = await container.logs({ stdout: true, stderr: true, tail, timestamps: true });
 
     const lines = [];
@@ -787,6 +867,12 @@ const wss = new WebSocketServer({ noServer: true });
 server.on('upgrade', (req, socket, head) => {
   const match = /^\/ws\/exec\/([^/?]+)/.exec(req.url || '');
   if (!match) return socket.destroy();
+  // WebSockets aren't covered by CORS at all: any page can open one to any
+  // address. Without this check, a page on another site could open a shell.
+  if (!isSameOrigin(req)) {
+    socket.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
+    return socket.destroy();
+  }
   wss.handleUpgrade(req, socket, head, (ws) => {
     wss.emit('connection', ws, req, match[1]);
   });

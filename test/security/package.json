@@ -1,0 +1,10 @@
+{
+  "name": "servedash-security-check",
+  "private": true,
+  "description": "Security regression check, run against a local dev instance before each release. Not part of the image.",
+  "scripts": { "check": "node check.js" },
+  "devDependencies": {
+    "playwright-core": "1.65.1",
+    "ws": "8.21.3"
+  }
+}

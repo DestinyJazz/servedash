@@ -1,0 +1,19 @@
+version: 2
+updates:
+  # Pinned action SHAs in .github/workflows
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+
+  # backend/package-lock.json
+  - package-ecosystem: npm
+    directory: /backend
+    schedule:
+      interval: weekly
+
+  # Base image in the Dockerfile (node:24-alpine)
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly

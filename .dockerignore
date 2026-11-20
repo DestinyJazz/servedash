@@ -1,0 +1,11 @@
+# Keep the build context to what the image needs. Without this, a local
+# "docker build" copied the host's backend/node_modules over the clean
+# "npm ci" install (COPY backend/ runs after it).
+**/node_modules
+.git
+.github
+dev-data
+test
+assets
+*.md
+.env
