@@ -1,4 +1,4 @@
-FROM node:24-alpine
+FROM node:26-alpine
 WORKDIR /app
 # Install exactly what package-lock.json pins. "npm install" without the
 # lockfile resolved fresh versions on every build, so a compromised or
