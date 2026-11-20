@@ -6,7 +6,7 @@
     "start": "node server.js"
   },
   "dependencies": {
-    "dockerode": "^4.0.2",
+    "dockerode": "^5.0.1",
     "express": "^4.22.3",
     "ws": "^8.18.0"
   }
