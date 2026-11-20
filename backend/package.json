@@ -7,7 +7,7 @@
   },
   "dependencies": {
     "dockerode": "^4.0.2",
-    "express": "^4.22.3",
+    "express": "^5.3.0",
     "ws": "^8.18.0"
   }
 }
